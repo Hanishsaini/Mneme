@@ -95,6 +95,12 @@ export interface CanvasDocumentDTO {
 /** Initial server-rendered snapshot handed to the client store on load. */
 export interface WorkspaceSnapshot {
   workspace: WorkspaceDTO;
+  /** The full thread list in this workspace, newest first. Light metadata
+   *  only — clients render the thread switcher from here. */
+  conversations: ConversationDTO[];
+  /** The currently-active thread (either picked by `?thread=` or the most
+   *  recent one). Its messages are included; sibling threads' messages are
+   *  fetched on demand. */
   conversation: ConversationDTO;
   messages: MessageDTO[];
   canvas: CanvasDocumentDTO;

@@ -41,6 +41,9 @@ interface WorkspaceState {
   // ── identity / hydration ──────────────────────────────────────────────
   hydrated: boolean;
   workspace: WorkspaceDTO | null;
+  /** All threads in the active workspace, newest first. Drives the thread
+   *  switcher. The currently-rendered thread is `conversation`. */
+  conversations: ConversationDTO[];
   conversation: ConversationDTO | null;
 
   // ── connection ────────────────────────────────────────────────────────
@@ -65,6 +68,10 @@ interface WorkspaceState {
   // ── actions: hydration ───────────────────────────────────────────────
   hydrate: (snapshot: WorkspaceSnapshot) => void;
   setConnection: (status: ConnectionStatus) => void;
+
+  // ── actions: thread list ─────────────────────────────────────────────
+  upsertConversation: (conversation: ConversationDTO) => void;
+  removeConversation: (id: string) => void;
 
   // ── actions: membership ──────────────────────────────────────────────
   addWorkspaceMember: (member: WorkspaceMemberDTO) => void;
@@ -132,6 +139,7 @@ function foldCanvas(
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   hydrated: false,
   workspace: null,
+  conversations: [],
   conversation: null,
   connection: "connecting",
   lastServerSeq: 0,
@@ -147,6 +155,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     set({
       hydrated: true,
       workspace: snapshot.workspace,
+      conversations: snapshot.conversations,
       conversation: snapshot.conversation,
       messages: [...snapshot.messages].sort(
         (a, b) => a.serverSeq - b.serverSeq,
@@ -157,6 +166,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     }),
 
   setConnection: (connection) => set({ connection }),
+
+  upsertConversation: (conversation) =>
+    set((s) => {
+      const others = s.conversations.filter((c) => c.id !== conversation.id);
+      // Move the touched thread to the top — matches the backend's
+      // newest-by-updatedAt ordering, so the switcher stays consistent.
+      return { conversations: [conversation, ...others] };
+    }),
+
+  removeConversation: (id) =>
+    set((s) => ({
+      conversations: s.conversations.filter((c) => c.id !== id),
+    })),
 
   addWorkspaceMember: (member) =>
     set((s) => {

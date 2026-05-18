@@ -15,12 +15,13 @@ export const GET = withHandler(
   { paramsSchema },
   async ({ req, user, params }) => {
     await requireMembership(user.id, params.workspaceId);
-    const since = Number(
-      new URL(req.url).searchParams.get("since") ?? "0",
-    );
+    const url = new URL(req.url);
+    const since = Number(url.searchParams.get("since") ?? "0");
+    const conversationId = url.searchParams.get("conversation") ?? undefined;
     const delta = await getSyncDelta(
       params.workspaceId,
       Number.isFinite(since) ? since : 0,
+      conversationId,
     );
     return delta;
   },

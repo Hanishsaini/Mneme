@@ -168,10 +168,17 @@ function wireEvents(s: AppClientSocket, workspaceId: string) {
 
 /** Pull every event missed while disconnected, then resume live. */
 async function resync(workspaceId: string) {
-  const since = useWorkspaceStore.getState().lastServerSeq;
+  const state = useWorkspaceStore.getState();
+  const since = state.lastServerSeq;
+  // Scope the delta to the thread the user is actually rendering. Without
+  // this, a reconnect on thread B could merge in messages from thread A
+  // (the "primary" by createdAt) and pollute the list.
+  const conversationId = state.conversation?.id;
+  const params = new URLSearchParams({ since: String(since) });
+  if (conversationId) params.set("conversation", conversationId);
   try {
     const res = await fetch(
-      `/api/workspaces/${workspaceId}/sync?since=${since}`,
+      `/api/workspaces/${workspaceId}/sync?${params.toString()}`,
     );
     if (!res.ok) return;
     const delta = (await res.json()) as SyncDelta;

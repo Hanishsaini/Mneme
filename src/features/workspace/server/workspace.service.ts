@@ -18,24 +18,43 @@ import {
   findPrimaryConversation,
   findWorkspaceById,
 } from "./workspace.repository";
+import {
+  findConversationById,
+  listConversationsForWorkspace,
+} from "@/features/conversation/server/conversation.repository";
 
 /**
  * Builds the server-rendered snapshot the client store hydrates from. This
  * is the single read that bootstraps a workspace session: workspace +
- * members, the primary conversation with recent history, the canvas, live
- * presence, and the current serverSeq watermark for gap detection.
+ * members, the active conversation with recent history, the full thread
+ * list (light metadata), the canvas, live presence, and the current
+ * serverSeq watermark for gap detection.
+ *
+ * `activeConversationId` selects which thread's messages to load. When
+ * omitted or invalid, falls back to the most recently updated thread (which
+ * matches the order in the thread switcher, so the user lands on what
+ * they last touched).
  *
  * Side effect: reseeds the Redis sequence counters from the DB max so a
  * Redis cold start can't hand out a serverSeq that collides with history.
  */
 export async function getWorkspaceSnapshot(
   workspaceId: string,
+  activeConversationId?: string,
 ): Promise<WorkspaceSnapshot> {
   const workspace = await findWorkspaceById(workspaceId);
   if (!workspace) throw Errors.notFound("Workspace");
 
-  const conversation = await findPrimaryConversation(workspaceId);
-  if (!conversation) throw Errors.notFound("Conversation");
+  const conversations = await listConversationsForWorkspace(workspaceId);
+  if (conversations.length === 0) throw Errors.notFound("Conversation");
+
+  // Pick the active conversation: explicit query param wins, but only if it
+  // belongs to this workspace; otherwise fall back to the most recently
+  // updated one (first in the list, since listed newest-first by updatedAt).
+  let conversation = activeConversationId
+    ? conversations.find((c) => c.id === activeConversationId)
+    : undefined;
+  if (!conversation) conversation = conversations[0];
 
   const canvas = await findPrimaryCanvas(workspaceId);
   if (!canvas) throw Errors.notFound("Canvas");
@@ -61,6 +80,7 @@ export async function getWorkspaceSnapshot(
 
   return {
     workspace: toWorkspaceDTO(workspace),
+    conversations: conversations.map(toConversationDTO),
     conversation: toConversationDTO(conversation),
     messages: messages.map(toMessageDTO),
     canvas: toCanvasDTO(canvas),

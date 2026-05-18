@@ -12,16 +12,29 @@ import { getOperationsSince } from "@/features/canvas/server/canvas.service";
  * comes from here. A client that detects a `serverSeq` gap (or reconnects)
  * calls this with its last-seen seq and gets every missed message + canvas
  * op, plus a fresh presence snapshot.
+ *
+ * `conversationId` scopes message delta to the thread the client is
+ * actually rendering. Falls back to the oldest conversation when omitted
+ * (legacy single-thread behavior) or when the requested thread doesn't
+ * belong to this workspace.
  */
 export async function getSyncDelta(
   workspaceId: string,
   sinceSeq: number,
+  conversationId?: string,
 ): Promise<SyncDelta> {
-  const conversation = await prisma.conversation.findFirst({
-    where: { workspaceId },
-    orderBy: { createdAt: "asc" },
-    select: { id: true },
-  });
+  // Resolve the active conversation, defending against a stale id from the
+  // client (e.g. user pasted in a query param for a deleted thread).
+  const conversation = conversationId
+    ? await prisma.conversation.findFirst({
+        where: { id: conversationId, workspaceId },
+        select: { id: true },
+      })
+    : await prisma.conversation.findFirst({
+        where: { workspaceId },
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      });
   const canvas = await prisma.canvasDocument.findFirst({
     where: { workspaceId },
     orderBy: { updatedAt: "asc" },

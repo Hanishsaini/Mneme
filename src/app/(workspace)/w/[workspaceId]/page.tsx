@@ -12,17 +12,20 @@ import { ApiError } from "@/lib/api/errors";
  */
 export default async function WorkspacePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
+  searchParams: Promise<{ thread?: string }>;
 }) {
   const { workspaceId } = await params;
+  const { thread } = await searchParams;
 
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   try {
     await requireMembership(user.id, workspaceId);
-    const snapshot = await getWorkspaceSnapshot(workspaceId);
+    const snapshot = await getWorkspaceSnapshot(workspaceId, thread);
     return <WorkspaceShell snapshot={snapshot} />;
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) notFound();
