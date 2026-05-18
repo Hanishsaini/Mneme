@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Markdown } from "@/components/ui/markdown";
 import { useAiStream } from "../hooks/use-ai-stream";
 
 /**
@@ -24,10 +25,11 @@ export function AiStreamRenderer() {
           <span className="text-xs font-semibold">AI Assistant</span>
           <span className="text-[10px] text-muted-foreground">streaming…</span>
         </div>
-        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-          {activeRun.buffer}
-          <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse-subtle bg-foreground align-middle" />
-        </p>
+        <Markdown content={activeRun.buffer} />
+        <span
+          aria-hidden
+          className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse-subtle bg-foreground align-middle"
+        />
       </div>
     </div>
   );

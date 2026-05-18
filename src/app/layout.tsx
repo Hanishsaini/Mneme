@@ -6,6 +6,7 @@ import { SessionProvider } from "@/components/providers/session-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { APP_NAME } from "@/config/constants";
+import "highlight.js/styles/github-dark.css";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });

@@ -2,6 +2,7 @@
 
 import { cn, formatTime, initials } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Markdown } from "@/components/ui/markdown";
 import type { MessageDTO } from "@workspace/shared";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 
@@ -51,9 +52,7 @@ export function MessageBubble({ message }: { message: MessageDTO }) {
             <span className="text-[10px] text-destructive">failed</span>
           )}
         </div>
-        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-          {message.content}
-        </p>
+        <Markdown content={message.content} />
       </div>
     </div>
   );
