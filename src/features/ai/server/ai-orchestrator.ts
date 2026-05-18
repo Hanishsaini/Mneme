@@ -3,6 +3,7 @@ import { redisKeys } from "@workspace/shared";
 import { acquireLock, releaseLock } from "@/lib/redis/locks";
 import { nextMessageSeq } from "@/lib/redis/sequence";
 import { checkAiRateLimit } from "@/lib/redis/ratelimit";
+import { clearRunAbort, isRunAborted } from "@/lib/redis/run-control";
 import { publishToWorkspace } from "@/lib/realtime/publish";
 import { toMessageDTO } from "@/lib/db/mappers";
 import { Errors } from "@/lib/api/errors";
@@ -147,12 +148,32 @@ async function streamAndPersist(args: StreamArgs): Promise<void> {
     const context = await buildContext(conversationId, workspaceId);
     const generator = streamCompletion(context);
 
+    // Poll the Redis abort flag every ~250ms. Can't cancel the upstream HTTP
+    // request from here, but breaking the consume loop is enough — the
+    // finally block persists whatever the buffer captured. Cheap enough at
+    // 4 Redis GETs/sec to fit comfortably in the Upstash free tier.
+    const ABORT_POLL_MS = 250;
+    let aborted = false;
+    let lastAbortCheck = Date.now();
     let result = await generator.next();
     while (!result.done) {
+      if (Date.now() - lastAbortCheck > ABORT_POLL_MS) {
+        lastAbortCheck = Date.now();
+        if (await isRunAborted(runId)) {
+          aborted = true;
+          break;
+        }
+      }
       await buffer.push(result.value);
       result = await generator.next();
     }
-    const usage = result.value?.usage;
+    // Generator yields are strings (tokens), return value is `{ usage }`. On
+    // the natural-completion path `result.done` is true and TS narrows
+    // `result.value` to the return type; on the aborted path we broke mid-
+    // stream and `result.value` is the last token (a string), so we can't
+    // read usage from it.
+    const usage =
+      !aborted && result.done ? (result.value?.usage ?? null) : null;
     const finalContent = await buffer.finalize();
 
     const finalMessage = await completeMessage(messageId, finalContent, usage);
@@ -172,6 +193,9 @@ async function streamAndPersist(args: StreamArgs): Promise<void> {
     });
   } finally {
     await releaseLock({ key: args.lockKey, token: args.lockToken });
+    // Drop any abort signal so a future re-use of this runId (shouldn't
+    // happen, but TTL-only cleanup is fragile) doesn't see a stale flag.
+    await clearRunAbort(runId).catch(() => {});
     // Roll the shared conversation memory forward — never blocks completion.
     void maybeRefreshSummary(conversationId);
   }
