@@ -6,35 +6,30 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/db/prisma";
 import { getServerEnv } from "@/config/env";
 import { CURSOR_COLORS } from "@/config/constants";
+import { verifyPassword } from "@/lib/auth/password";
+import {
+  clearLoginAttempts,
+  recordLoginAttempt,
+} from "@/lib/redis/login-ratelimit";
 
 /**
- * NextAuth (v4) config. Production-grade OAuth + a deliberately-gated dev
- * credentials path:
+ * NextAuth (v4) config. Email + password is the primary auth method;
+ * Google / GitHub OAuth remain available when their env keys are set.
  *
+ *   - CredentialsProvider verifies bcrypt-hashed passwords against the
+ *     User.passwordHash column. Rate-limited per-email through Redis
+ *     (5 attempts / 15 min). Successful sign-in clears the bucket.
  *   - Google + GitHub providers are wired when their env keys are set.
- *   - The PrismaAdapter persists OAuth Account/Session/VerificationToken
- *     rows (already present in the schema). Session strategy stays JWT so
- *     route handlers and the realtime token endpoint stay stateless.
- *   - On `createUser` (fires once per new account ever — OAuth path only,
- *     the adapter calls it before sign-in completes) we provision a
- *     personal workspace so a fresh sign-in always has somewhere to land.
- *   - The dev-only CredentialsProvider (email lookup, no password) is
- *     enabled only when ENABLE_DEV_LOGIN="true" or when NODE_ENV !=
- *     production AND ENABLE_DEV_LOGIN is unset. Production deploys never
- *     ship with credentials login unless explicitly opted in.
- *
- * NextAuth v5 (Auth.js) is the long-term target; staying on v4 here to
- * keep the realtime token + socket auth pipeline stable. The shape below
- * isolates auth from the rest of the app, so v5 migration is a localized
- * swap.
+ *     OAuth-created users get passwordHash=null and can't sign in via
+ *     credentials until they go through a (deferred) password-set flow.
+ *   - PrismaAdapter persists OAuth Account/Session rows. Session
+ *     strategy stays JWT so route handlers + the realtime token
+ *     endpoint stay stateless — credentials providers REQUIRE JWT.
+ *   - `events.createUser` fires once per adapter-created User
+ *     (OAuth path only). For credentials sign-ups the registration
+ *     service provisions the workspace inside the same transaction —
+ *     this event isn't invoked.
  */
-
-function devLoginEnabled(): boolean {
-  const flag = process.env.ENABLE_DEV_LOGIN;
-  if (flag === "true") return true;
-  if (flag === "false") return false;
-  return process.env.NODE_ENV !== "production";
-}
 
 function buildProviders(): NextAuthOptions["providers"] {
   const env = getServerEnv();
@@ -64,28 +59,47 @@ function buildProviders(): NextAuthOptions["providers"] {
     );
   }
 
-  if (devLoginEnabled()) {
-    providers.push(
-      CredentialsProvider({
-        id: "dev",
-        name: "Dev Login",
-        credentials: { email: { label: "Email", type: "email" } },
-        async authorize(credentials) {
-          if (!credentials?.email) return null;
-          const user = await prisma.user.findUnique({
-            where: { email: credentials.email },
-          });
-          if (!user) return null;
-          return {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            image: user.image,
-          };
-        },
-      }),
-    );
-  }
+  // Email + password — always on. The /register flow creates users with
+  // a bcrypt hash; this provider verifies submitted credentials against
+  // that hash. Failed attempts are rate-limited per email in Redis so
+  // credential-stuffing campaigns hit a wall after a handful of tries.
+  providers.push(
+    CredentialsProvider({
+      id: "credentials",
+      name: "Email and password",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) return null;
+        const email = credentials.email.trim().toLowerCase();
+
+        const rl = await recordLoginAttempt(email);
+        if (!rl.allowed) return null;
+
+        const user = await prisma.user.findUnique({ where: { email } });
+        // No account OR OAuth-only user without a password: same outcome,
+        // same null return — NextAuth surfaces this as CredentialsSignin
+        // and our login form copy doesn't enumerate which case it was.
+        if (!user?.passwordHash) return null;
+
+        const ok = await verifyPassword(credentials.password, user.passwordHash);
+        if (!ok) return null;
+
+        // Success — wipe the attempts bucket so a future fat-finger doesn't
+        // ride on top of today's misses.
+        await clearLoginAttempts(email);
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+        };
+      },
+    }),
+  );
 
   return providers;
 }

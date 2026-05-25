@@ -58,6 +58,10 @@ model User {
   emailVerified DateTime?
   name          String?
   image         String?
+  /// bcrypt-hashed password. Optional because users who signed up via OAuth
+  /// (Google/GitHub) won't have one — they authenticate through the provider.
+  /// Email+password users get this populated at registration.
+  passwordHash  String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

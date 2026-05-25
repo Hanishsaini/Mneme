@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Github } from "lucide-react";
@@ -10,17 +11,20 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { APP_NAME } from "@/config/constants";
 
 const ERROR_MESSAGES: Record<string, string> = {
+  // Generic message across every credential failure — no enumeration. Don't
+  // distinguish "wrong password", "no account", "rate-limited" here.
+  CredentialsSignin: "Invalid email or password.",
   OAuthAccountNotLinked:
     "That email is already linked to a different sign-in method. Use the original provider.",
   AccessDenied: "Access denied. You may not have permission to sign in.",
   Configuration: "Authentication is misconfigured on the server.",
-  CredentialsSignin: "No account matches that email.",
   default: "Could not sign in. Please try again.",
 };
 
@@ -28,16 +32,15 @@ export interface LoginFormProps {
   providers: {
     google: boolean;
     github: boolean;
-    devLogin: boolean;
   };
   initialError?: string;
   callbackUrl?: string;
 }
 
 /**
- * The actual login UI. Server entry resolves which providers are wired up
- * + reads any `?error=` from a previous attempt and passes both as props,
- * so this component stays pure presentation + intent.
+ * Email + password login. OAuth providers (Google/GitHub) appear below
+ * as alternatives when their env keys are configured; if neither is set,
+ * the form is just email + password.
  */
 export function LoginForm({
   providers,
@@ -45,19 +48,27 @@ export function LoginForm({
   callbackUrl,
 }: LoginFormProps) {
   const router = useRouter();
-  const [email, setEmail] = useState("alice@example.com");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(
-    initialError ? (ERROR_MESSAGES[initialError] ?? ERROR_MESSAGES.default) : null,
+    initialError
+      ? (ERROR_MESSAGES[initialError] ?? ERROR_MESSAGES.default)
+      : null,
   );
 
   const next = callbackUrl ?? "/dashboard";
 
-  async function handleDevLogin(e: React.FormEvent) {
+  async function handleCredentialsLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setPending("dev");
-    const res = await signIn("dev", { email, redirect: false, callbackUrl: next });
+    setPending("credentials");
+    const res = await signIn("credentials", {
+      email: email.trim().toLowerCase(),
+      password,
+      redirect: false,
+      callbackUrl: next,
+    });
     setPending(null);
     if (res?.error) {
       setError(ERROR_MESSAGES.CredentialsSignin);
@@ -68,7 +79,9 @@ export function LoginForm({
   }
 
   const hasOAuth = providers.google || providers.github;
-  const hasAnything = hasOAuth || providers.devLogin;
+  const registerHref = `/register${
+    callbackUrl ? `?callbackUrl=${encodeURIComponent(callbackUrl)}` : ""
+  }`;
 
   return (
     <Card className="w-full max-w-sm glass">
@@ -79,76 +92,79 @@ export function LoginForm({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!hasAnything && (
-          <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive">
-            No sign-in providers configured. Set GOOGLE_*, GITHUB_*, or
-            ENABLE_DEV_LOGIN in <code>.env.local</code> and restart.
-          </p>
-        )}
-
-        {providers.google && (
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full justify-center gap-2"
+        <form onSubmit={handleCredentialsLogin} className="space-y-3">
+          <Input
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
             disabled={pending !== null}
-            onClick={() => {
-              setPending("google");
-              signIn("google", { callbackUrl: next });
-            }}
-          >
-            <GoogleIcon />
-            {pending === "google" ? "Redirecting…" : "Continue with Google"}
-          </Button>
-        )}
-
-        {providers.github && (
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full justify-center gap-2"
+            autoComplete="email"
+          />
+          <Input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
             disabled={pending !== null}
-            onClick={() => {
-              setPending("github");
-              signIn("github", { callbackUrl: next });
-            }}
+            autoComplete="current-password"
+          />
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={pending !== null || !email || !password}
           >
-            <Github />
-            {pending === "github" ? "Redirecting…" : "Continue with GitHub"}
+            {pending === "credentials" ? "Signing in…" : "Sign in"}
           </Button>
-        )}
+        </form>
 
-        {providers.devLogin && (
+        {hasOAuth && (
           <>
-            {hasOAuth && (
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-[10px] uppercase tracking-wider">
-                  <span className="bg-card px-2 text-muted-foreground">
-                    or dev login
-                  </span>
-                </div>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
               </div>
-            )}
-            <form onSubmit={handleDevLogin} className="space-y-3">
-              <Input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={pending !== null}
-              />
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={pending !== null}
-              >
-                {pending === "dev" ? "Signing in…" : "Continue (dev)"}
-              </Button>
-            </form>
+              <div className="relative flex justify-center text-[10px] uppercase tracking-wider">
+                <span className="bg-card px-2 text-muted-foreground">
+                  or continue with
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {providers.google && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-center gap-2"
+                  disabled={pending !== null}
+                  onClick={() => {
+                    setPending("google");
+                    signIn("google", { callbackUrl: next });
+                  }}
+                >
+                  <GoogleIcon />
+                  {pending === "google" ? "Redirecting…" : "Google"}
+                </Button>
+              )}
+              {providers.github && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-center gap-2"
+                  disabled={pending !== null}
+                  onClick={() => {
+                    setPending("github");
+                    signIn("github", { callbackUrl: next });
+                  }}
+                >
+                  <Github />
+                  {pending === "github" ? "Redirecting…" : "GitHub"}
+                </Button>
+              )}
+            </div>
           </>
         )}
 
@@ -158,6 +174,12 @@ export function LoginForm({
           </p>
         )}
       </CardContent>
+      <CardFooter className="justify-center text-xs text-muted-foreground">
+        Don&apos;t have an account?
+        <Link href={registerHref} className="ml-1 text-primary underline">
+          Sign up
+        </Link>
+      </CardFooter>
     </Card>
   );
 }

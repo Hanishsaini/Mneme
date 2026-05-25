@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -7,8 +8,9 @@ const prisma = new PrismaClient();
  *
  *   SEED_DEV_USERS=true   → create alice@example.com + bob@example.com,
  *                           each with their OWN personal workspace +
- *                           conversation + canvas. Used by the dev
- *                           CredentialsProvider for two-user testing.
+ *                           conversation + canvas. Both seeded users get
+ *                           the dev password "password1234" so you can
+ *                           sign in via the email+password flow.
  *
  *   SEED_DEMO_SHARED=true → additionally create a shared "Demo Workspace"
  *                           with both seeded users as members, for testing
@@ -17,18 +19,22 @@ const prisma = new PrismaClient();
  *
  * Defaults: nothing happens. This file is idempotent — it upserts users and
  * only creates a workspace if the named one doesn't already exist.
+ *
+ * Re-running the seed re-hashes the dev password every time, which keeps
+ * Alice/Bob signable after a password rotation in `DEV_PASSWORD` below.
  */
 
 const CURSOR_COLORS = ["#6366f1", "#ec4899", "#14b8a6", "#f59e0b"];
+const DEV_PASSWORD = "password1234";
 
 const seedUsers = process.env.SEED_DEV_USERS === "true";
 const seedShared = process.env.SEED_DEMO_SHARED === "true";
 
-async function upsertUser(email: string, name: string) {
+async function upsertUser(email: string, name: string, passwordHash: string) {
   return prisma.user.upsert({
     where: { email },
-    update: {},
-    create: { email, name },
+    update: { passwordHash },
+    create: { email, name, passwordHash },
   });
 }
 
@@ -99,8 +105,10 @@ async function main() {
     return;
   }
 
-  const alice = await upsertUser("alice@example.com", "Alice");
-  const bob = await upsertUser("bob@example.com", "Bob");
+  const passwordHash = await bcrypt.hash(DEV_PASSWORD, 12);
+  const alice = await upsertUser("alice@example.com", "Alice", passwordHash);
+  const bob = await upsertUser("bob@example.com", "Bob", passwordHash);
+  console.log(`[seed] dev password for both: ${DEV_PASSWORD}`);
 
   if (seedUsers) {
     const aliceWs = await ensurePersonalWorkspace(
