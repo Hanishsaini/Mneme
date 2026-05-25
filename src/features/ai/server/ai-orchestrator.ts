@@ -8,6 +8,7 @@ import { publishToWorkspace } from "@/lib/realtime/publish";
 import { toMessageDTO } from "@/lib/db/mappers";
 import { Errors } from "@/lib/api/errors";
 import { CONVERSATION_LOCK_TTL_SECONDS } from "@/config/constants";
+import { embedMessage } from "@/features/memory/server/memory.service";
 import {
   completeAiRun,
   completeMessage,
@@ -80,6 +81,11 @@ export async function runAiTurn(input: RunAiTurnInput): Promise<{
       await publishToWorkspace(workspaceId, "chat:message:created", {
         message: toMessageDTO(userMessage),
       });
+      // Team Memory: embed the user message in the background. Idempotent;
+      // a reconnect retry that finds the existing message skips embedding.
+      void embedMessage(userMessage.id).catch((err) =>
+        console.error(`[memory] embed user msg ${userMessage!.id} failed:`, err),
+      );
     }
 
     // (4) Assistant placeholder + run record.
@@ -196,6 +202,11 @@ async function streamAndPersist(args: StreamArgs): Promise<void> {
     // Drop any abort signal so a future re-use of this runId (shouldn't
     // happen, but TTL-only cleanup is fragile) doesn't see a stale flag.
     await clearRunAbort(runId).catch(() => {});
+    // Team Memory: embed whatever the assistant produced (partial on abort
+    // or error is fine — the buffer already persisted to the message row).
+    void embedMessage(messageId).catch((err) =>
+      console.error(`[memory] embed assistant msg ${messageId} failed:`, err),
+    );
     // Roll the shared conversation memory forward — never blocks completion.
     void maybeRefreshSummary(conversationId);
   }

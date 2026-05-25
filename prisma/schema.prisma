@@ -76,6 +76,8 @@ model User {
   presence        PresenceState[]
   invitesSent     WorkspaceInvite[] @relation("InvitesSent")
   invitesUsed     WorkspaceInvite[] @relation("InvitesUsed")
+  // Team memory back-refs
+  // (no direct user→embedding link; embeddings are keyed by message)
 }
 
 /// NextAuth OAuth account links. Standard adapter shape — do not rename
@@ -140,8 +142,37 @@ model Workspace {
   canvases      CanvasDocument[]
   presence      PresenceState[]
   invites       WorkspaceInvite[]
+  embeddings    Embedding[]
 
   @@index([ownerId])
+}
+
+/// Vector embedding for a single message. Powers Team Memory: semantic
+/// retrieval of past conversations ("what did we decide about X").
+///
+/// `embedding` is a pgvector(768) column (Gemini text-embedding-004
+/// dimensions). Prisma doesn't natively type vector columns, so it's
+/// declared `Unsupported` and read/written via raw queries; everything
+/// else (relations, indexes) is regular Prisma.
+///
+/// One row per message, enforced by `@unique` on `messageId`. The HNSW
+/// index for fast cosine similarity is added in the migration SQL
+/// (Prisma can't emit `USING hnsw` directly yet).
+model Embedding {
+  id             String   @id @default(cuid())
+  messageId      String   @unique
+  conversationId String
+  workspaceId    String
+  content        String   @db.Text
+  embedding      Unsupported("vector(768)")?
+  createdAt      DateTime @default(now())
+
+  message      Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([conversationId])
 }
 
 /// Single-use invite tokens that grant membership on /invite/[token].
@@ -195,9 +226,10 @@ model Conversation {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  messages  Message[]
-  aiRuns    AiRun[]
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages   Message[]
+  aiRuns     AiRun[]
+  embeddings Embedding[]
 
   @@index([workspaceId, createdAt])
 }
@@ -222,6 +254,7 @@ model Message {
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   author       User?        @relation(fields: [authorId], references: [id])
   aiRun        AiRun?
+  embedding    Embedding?
 
   @@unique([conversationId, clientMsgId])
   @@unique([conversationId, serverSeq])
