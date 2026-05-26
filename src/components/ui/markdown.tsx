@@ -1,13 +1,16 @@
 "use client";
 
+import { isValidElement, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { cn } from "@/lib/utils";
+import { CodeBlock } from "./code-block";
 
 /**
  * Renders message content as GitHub-flavored markdown with syntax-highlighted
- * code blocks via highlight.js.
+ * code blocks via highlight.js, then dresses every fenced block with a
+ * language tag + copy button via the CodeBlock wrapper.
  *
  * Safe for the live streaming bubble too — react-markdown handles partial
  * input gracefully, so an unclosed code fence mid-stream just renders as
@@ -51,7 +54,7 @@ export function Markdown({
           ),
           li: ({ children }) => <li className="leading-relaxed">{children}</li>,
           blockquote: ({ children }) => (
-            <blockquote className="my-2 border-l-2 border-border pl-3 italic text-muted-foreground">
+            <blockquote className="my-2 border-l-2 border-violet-500/40 pl-3 italic text-muted-foreground">
               {children}
             </blockquote>
           ),
@@ -60,7 +63,7 @@ export function Markdown({
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary underline underline-offset-2 hover:no-underline"
+              className="text-violet-300 underline underline-offset-2 hover:text-violet-200"
             >
               {children}
             </a>
@@ -88,28 +91,47 @@ export function Markdown({
               </code>
             );
           },
-          pre: ({ children }) => (
-            <pre className="my-2 overflow-x-auto rounded-md border border-border/40 bg-muted/40 p-3">
-              {children}
-            </pre>
-          ),
+          pre: ({ children }) => {
+            // The fenced-block <code> is the direct child here. Read its
+            // language + raw text so the CodeBlock header can show the tag
+            // and the copy button can dump the un-highlighted source.
+            const inner = Array.isArray(children) ? children[0] : children;
+            let language = "";
+            let raw = "";
+            if (isValidElement(inner)) {
+              const props = inner.props as {
+                className?: string;
+                children?: ReactNode;
+              };
+              const match = props.className?.match(/language-(\S+)/);
+              if (match) language = match[1];
+              raw = nodeToText(props.children);
+            }
+            return (
+              <CodeBlock language={language} code={raw}>
+                {children}
+              </CodeBlock>
+            );
+          },
           table: ({ children }) => (
-            <div className="my-2 overflow-x-auto">
-              <table className="border-collapse text-left text-xs">
+            <div className="my-3 overflow-x-auto rounded-md border border-border/60">
+              <table className="w-full border-collapse text-left text-xs">
                 {children}
               </table>
             </div>
           ),
           thead: ({ children }) => (
-            <thead className="bg-muted">{children}</thead>
+            <thead className="bg-muted/60">{children}</thead>
           ),
           th: ({ children }) => (
-            <th className="border border-border px-2 py-1 font-semibold">
+            <th className="border-b border-border px-2.5 py-1.5 font-semibold">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="border border-border px-2 py-1">{children}</td>
+            <td className="border-b border-border/40 px-2.5 py-1.5">
+              {children}
+            </td>
           ),
         }}
       >
@@ -117,4 +139,15 @@ export function Markdown({
       </ReactMarkdown>
     </div>
   );
+}
+
+/** Recursively pulls text out of a React subtree for clipboard copy. */
+function nodeToText(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeToText).join("");
+  if (isValidElement(node)) {
+    return nodeToText((node.props as { children?: ReactNode }).children);
+  }
+  return "";
 }
