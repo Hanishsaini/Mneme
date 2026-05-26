@@ -1,5 +1,9 @@
 import "server-only";
 import bcrypt from "bcryptjs";
+import {
+  isCommonPassword,
+  passwordContainsEmail,
+} from "./common-passwords";
 
 /**
  * Password hashing — bcrypt with cost factor 12.
@@ -19,16 +23,30 @@ export const PASSWORD_MIN_LENGTH = 12;
 
 /**
  * NIST 2017 / SP 800-63B guidance: length beats complexity. We require 12
- * characters and accept anything from there. No mandatory mixed-case /
+ * characters and reject the worst-of-the-worst dictionary picks + anything
+ * trivially derivable from the user's own email. No mandatory mixed-case /
  * symbol / digit rules — those just push users toward predictable
  * substitutions ("Password1!"). Long passphrases are stronger.
+ *
+ * `email` is optional so the function stays usable in contexts that don't
+ * have one (password reset confirm, say). When supplied we additionally
+ * reject the local-part as a substring.
  */
-export function validatePasswordStrength(plain: string): string | null {
+export function validatePasswordStrength(
+  plain: string,
+  email?: string,
+): string | null {
   if (plain.length < PASSWORD_MIN_LENGTH) {
     return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
   }
   if (plain.length > 256) {
     return "Password is too long.";
+  }
+  if (isCommonPassword(plain)) {
+    return "That password is in every breach dictionary. Pick something a stranger couldn't guess.";
+  }
+  if (email && passwordContainsEmail(plain, email)) {
+    return "Password can't contain your email address.";
   }
   return null;
 }

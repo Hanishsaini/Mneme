@@ -29,7 +29,7 @@ export async function registerUser(input: RegisterInput) {
     throw Errors.badRequest("Enter a valid email address.");
   }
 
-  const pwError = validatePasswordStrength(input.password);
+  const pwError = validatePasswordStrength(input.password, email);
   if (pwError) throw Errors.badRequest(pwError);
 
   const existing = await prisma.user.findUnique({

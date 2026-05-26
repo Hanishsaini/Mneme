@@ -1,6 +1,9 @@
 /** Tunable application constants. Pure values — safe in any bundle. */
 
-export const APP_NAME = "AI Workspace";
+export const APP_NAME = "Mneme";
+/** Tagline shown on auth screens + future landing. The narrative wedge:
+ *  this is a memory product, not a chat tool. */
+export const APP_TAGLINE = "The memory layer for your team.";
 
 /**
  * Token-optimization budget. Free-tier models have small context windows and

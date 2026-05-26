@@ -1,13 +1,13 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getServerEnv } from "@/config/env";
-import { LoginForm } from "@/features/auth/components/login-form";
+import { AuthForm } from "@/features/auth/components/auth-form";
 
 /**
- * Server entry. Resolves which OAuth providers are wired up + reads any
- * `?error=` from a previous attempt, then hands off to the client form.
- * Email+password is always available; OAuth buttons surface conditionally.
- * Authenticated users skip the page entirely.
+ * /login — renders the unified auth surface defaulted to Sign-in. The
+ * Create-account tab is one click away; we keep /login as a stable URL
+ * (callbackUrl deeplinks rely on it, NextAuth's default redirect points
+ * here) without showing the user two distinct pages.
  */
 export default async function LoginPage({
   searchParams,
@@ -21,7 +21,8 @@ export default async function LoginPage({
   const params = await searchParams;
 
   return (
-    <LoginForm
+    <AuthForm
+      initialMode="signin"
       providers={{
         google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
         github: Boolean(env.GITHUB_ID && env.GITHUB_SECRET),

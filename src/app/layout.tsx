@@ -5,15 +5,15 @@ import { QueryProvider } from "@/components/providers/query-provider";
 import { SessionProvider } from "@/components/providers/session-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
-import { APP_NAME } from "@/config/constants";
+import { APP_NAME, APP_TAGLINE } from "@/config/constants";
 import "highlight.js/styles/github-dark.css";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: APP_NAME,
-  description: "Real-time collaborative AI workspace",
+  title: { default: APP_NAME, template: `%s · ${APP_NAME}` },
+  description: APP_TAGLINE,
 };
 
 export default function RootLayout({
