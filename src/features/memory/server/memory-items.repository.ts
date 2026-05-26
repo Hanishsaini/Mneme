@@ -40,6 +40,7 @@ export function updateMemoryItem(
     ownerId?: string | null;
     dueAt?: Date | null;
     resolvedAt?: Date | null;
+    confirmedAt?: Date | null;
   },
 ) {
   return prisma.memoryItem.update({ where: { id }, data });

@@ -203,6 +203,10 @@ model MemoryItem {
   ownerId        String?
   dueAt          DateTime?
   resolvedAt     DateTime?
+  /// Last time a human said "this is still true" — resets the staleness
+  /// clock for DECISION/CONTEXT kinds. Null = never reconfirmed since
+  /// extraction, so staleness measures from `createdAt`.
+  confirmedAt    DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 

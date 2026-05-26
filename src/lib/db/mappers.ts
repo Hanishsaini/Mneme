@@ -87,6 +87,7 @@ export function toMemoryItemDTO(m: MemoryItem): MemoryItemDTO {
     ownerId: m.ownerId,
     dueAt: m.dueAt?.toISOString() ?? null,
     resolvedAt: m.resolvedAt?.toISOString() ?? null,
+    confirmedAt: m.confirmedAt?.toISOString() ?? null,
     createdAt: m.createdAt.toISOString(),
     updatedAt: m.updatedAt.toISOString(),
   };

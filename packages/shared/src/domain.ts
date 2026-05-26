@@ -66,6 +66,7 @@ export interface MemoryItemDTO {
   ownerId: string | null;
   dueAt: string | null;
   resolvedAt: string | null;
+  confirmedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

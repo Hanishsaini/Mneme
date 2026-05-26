@@ -15,6 +15,9 @@ const patchBodySchema = z
   .object({
     text: z.string().min(1).max(2000).optional(),
     resolved: z.boolean().optional(),
+    /** `true` stamps `confirmedAt = now()` — resets the staleness clock for
+     *  DECISION/CONTEXT items. `false` clears it (mostly for undo). */
+    confirmed: z.boolean().optional(),
     ownerId: z.string().min(1).nullable().optional(),
     dueAt: z.string().datetime().nullable().optional(),
   })
@@ -46,6 +49,9 @@ export const PATCH = withHandler(
         : {}),
       ...(body.resolved !== undefined
         ? { resolvedAt: body.resolved ? new Date() : null }
+        : {}),
+      ...(body.confirmed !== undefined
+        ? { confirmedAt: body.confirmed ? new Date() : null }
         : {}),
     });
     return { item: toMemoryItemDTO(updated) };
