@@ -10,13 +10,9 @@ import { useStaleCount } from "@/features/memory/hooks/use-stale-count";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 
 /**
- * Top chrome: mobile menu trigger, workspace name, Memory button (with
- * stale-count badge), command-palette trigger, account menu.
- *
- * The old "Live / Reconnecting…" status badge and presence avatars were
- * tied to the socket connection — both removed now that chat streams
- * directly over SSE. A future multi-user reintroduction will reinstate
- * them.
+ * Top chrome: mobile menu trigger, active chat title, Memory button,
+ * search palette, account menu. Workspace name lives in the sidebar
+ * (Linear/Claude pattern) so it doesn't double-up here.
  */
 export function WorkspaceHeader({
   onMenuClick,
@@ -26,6 +22,7 @@ export function WorkspaceHeader({
   onOpenPalette: () => void;
 }) {
   const workspace = useWorkspaceStore((s) => s.workspace);
+  const conversation = useWorkspaceStore((s) => s.conversation);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const { count: staleCount, refresh: refreshStale } = useStaleCount(
     workspace?.id ?? null,
@@ -43,8 +40,8 @@ export function WorkspaceHeader({
         >
           <Menu />
         </Button>
-        <span className="truncate font-semibold">
-          {workspace?.name ?? "Workspace"}
+        <span className="truncate font-medium text-muted-foreground">
+          {conversation?.title ?? "New chat"}
         </span>
       </div>
 
