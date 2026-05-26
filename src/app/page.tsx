@@ -1,14 +1,14 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
+import { LandingPage } from "@/features/marketing/components/landing-page";
 
 /**
- * Entry point. Authenticated users land on the dashboard (which lists
- * their workspaces — no auto-restore into the most-recent one); everyone
- * else goes to /login. Removing the "find any membership and redirect" path
- * is what fixes the "old chat keeps reopening after reload" behavior.
+ * Public landing. Authenticated users skip straight into the app; everyone
+ * else gets the marketing surface so recruiters/founders/GitHub visitors
+ * see a real product, not a bare login form.
  */
 export default async function HomePage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  redirect("/dashboard");
+  if (user) redirect("/dashboard");
+  return <LandingPage />;
 }
