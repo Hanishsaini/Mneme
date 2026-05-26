@@ -98,6 +98,23 @@ export interface MemorySearchHit {
   createdAt: Date;
 }
 
+export interface RelatedMemoryHit {
+  messageId: string;
+  conversationId: string;
+  conversationTitle: string;
+  snippet: string;
+  /** 0–1, higher = more semantically aligned with the query. */
+  similarity: number;
+  createdAt: string;
+}
+
+/** Cosine distances above this aren't "related enough" to surface in the UI.
+ *  Empirically tuned for Gemini text-embedding-004: <0.3 is on-topic, ~0.55
+ *  is loosely-related, >0.7 is noise. We err on the side of fewer-better
+ *  hits — the proactive surface only earns trust if every suggestion lands. */
+const RELATED_DISTANCE_THRESHOLD = 0.55;
+const RELATED_SNIPPET_CHARS = 220;
+
 /**
  * Cosine-similarity search across one workspace's embeddings. Returns the
  * top-K closest messages to `query` plus their distances (0 = identical,
@@ -131,4 +148,101 @@ export async function searchMemory(
     workspaceId,
     k,
   );
+}
+
+interface RelatedSearchOptions {
+  excludeConversationId?: string;
+  k?: number;
+}
+
+interface RawRelatedRow {
+  messageId: string;
+  conversationId: string;
+  conversationTitle: string;
+  content: string;
+  distance: number;
+  createdAt: Date;
+}
+
+/**
+ * Context-triggered surfacing — given a query (typically the user's
+ * in-progress prompt), return the top-K *related* messages from OTHER
+ * conversations in the same workspace. Filters by a similarity threshold
+ * so off-topic noise doesn't pollute the sidebar; without that, every
+ * keystroke would yield three vaguely-shaped suggestions and the user
+ * would learn to ignore them.
+ *
+ * Returns conversation titles inline (joined in SQL) so the UI doesn't
+ * need a second round-trip per hit.
+ */
+export async function searchRelatedToCompose(
+  workspaceId: string,
+  query: string,
+  options: RelatedSearchOptions = {},
+): Promise<RelatedMemoryHit[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const k = options.k ?? 3;
+  const provider = resolveEmbeddingProvider();
+  const queryVec = await provider.embed(trimmed);
+  const literal = vectorLiteral(queryVec);
+
+  // Fetch a few extra and filter by threshold client-side — keeps the SQL
+  // simple and lets us return only the genuinely-related hits.
+  const overfetch = Math.max(k * 2, 6);
+
+  const rows = options.excludeConversationId
+    ? await prisma.$queryRawUnsafe<RawRelatedRow[]>(
+        `SELECT
+           e."messageId",
+           e."conversationId",
+           c."title" AS "conversationTitle",
+           e.content,
+           (e.embedding <=> $1::vector)::float AS distance,
+           e."createdAt"
+         FROM "Embedding" e
+         JOIN "Conversation" c ON c.id = e."conversationId"
+         WHERE e."workspaceId" = $2
+           AND e.embedding IS NOT NULL
+           AND e."conversationId" <> $3
+         ORDER BY e.embedding <=> $1::vector
+         LIMIT $4`,
+        literal,
+        workspaceId,
+        options.excludeConversationId,
+        overfetch,
+      )
+    : await prisma.$queryRawUnsafe<RawRelatedRow[]>(
+        `SELECT
+           e."messageId",
+           e."conversationId",
+           c."title" AS "conversationTitle",
+           e.content,
+           (e.embedding <=> $1::vector)::float AS distance,
+           e."createdAt"
+         FROM "Embedding" e
+         JOIN "Conversation" c ON c.id = e."conversationId"
+         WHERE e."workspaceId" = $2
+           AND e.embedding IS NOT NULL
+         ORDER BY e.embedding <=> $1::vector
+         LIMIT $3`,
+        literal,
+        workspaceId,
+        overfetch,
+      );
+
+  return rows
+    .filter((r) => r.distance < RELATED_DISTANCE_THRESHOLD)
+    .slice(0, k)
+    .map((r) => ({
+      messageId: r.messageId,
+      conversationId: r.conversationId,
+      conversationTitle: r.conversationTitle,
+      snippet: r.content.length > RELATED_SNIPPET_CHARS
+        ? `${r.content.slice(0, RELATED_SNIPPET_CHARS - 1)}…`
+        : r.content,
+      similarity: Math.max(0, Math.min(1, 1 - r.distance)),
+      createdAt: r.createdAt.toISOString(),
+    }));
 }

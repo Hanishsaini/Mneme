@@ -56,6 +56,18 @@ export interface ConversationDTO {
 
 export type MemoryItemKind = "DECISION" | "QUESTION" | "ACTION_ITEM" | "CONTEXT";
 
+/** A semantically-related past message returned to the prompt composer's
+ *  "related" surface as the user types. */
+export interface RelatedMemoryHitDTO {
+  messageId: string;
+  conversationId: string;
+  conversationTitle: string;
+  snippet: string;
+  /** 0–1; higher = more semantically aligned. */
+  similarity: number;
+  createdAt: string;
+}
+
 export interface MemoryItemDTO {
   id: string;
   workspaceId: string;

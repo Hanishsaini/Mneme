@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { RelatedMemoryStrip } from "@/features/memory/components/related-memory-strip";
 import { useConversation } from "../hooks/use-conversation";
 
 /**
@@ -39,8 +40,9 @@ export function PromptComposer() {
   }
 
   return (
-    <div className="border-t bg-card/40 p-3">
-      <div className="flex items-end gap-2">
+    <div className="border-t bg-card/40">
+      <RelatedMemoryStrip query={value} enabled={!isAiResponding} />
+      <div className="flex items-end gap-2 p-3">
         <Textarea
           value={value}
           onChange={handleChange}
