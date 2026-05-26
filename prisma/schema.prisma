@@ -40,6 +40,13 @@ enum CanvasType {
   CANVAS
 }
 
+enum MemoryItemKind {
+  DECISION
+  QUESTION
+  ACTION_ITEM
+  CONTEXT
+}
+
 enum PresenceStatus {
   ONLINE
   AWAY
@@ -143,6 +150,7 @@ model Workspace {
   presence      PresenceState[]
   invites       WorkspaceInvite[]
   embeddings    Embedding[]
+  memoryItems   MemoryItem[]
 
   @@index([ownerId])
 }
@@ -173,6 +181,38 @@ model Embedding {
 
   @@index([workspaceId])
   @@index([conversationId])
+}
+
+/// Structured nuggets extracted from a completed AI turn — decisions made,
+/// questions still open, action items, ambient context worth remembering.
+/// The "Memory" panel renders these grouped by kind.
+///
+/// Written fire-and-forget by the extractor after each AI run completes —
+/// a failed extraction never blocks the user-facing response. `messageId`
+/// points back to the assistant message that produced the item (nullable;
+/// SET NULL on message delete keeps the memory intact even if the source
+/// is purged). `ownerId` is a loose assignee for ACTION_ITEM; resolving
+/// flips `resolvedAt`.
+model MemoryItem {
+  id             String         @id @default(cuid())
+  workspaceId    String
+  conversationId String
+  messageId      String?
+  kind           MemoryItemKind
+  text           String         @db.Text
+  ownerId        String?
+  dueAt          DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message      Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, kind])
+  @@index([conversationId])
+  @@index([workspaceId, resolvedAt])
 }
 
 /// Single-use invite tokens that grant membership on /invite/[token].
@@ -226,10 +266,11 @@ model Conversation {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  messages   Message[]
-  aiRuns     AiRun[]
-  embeddings Embedding[]
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages    Message[]
+  aiRuns      AiRun[]
+  embeddings  Embedding[]
+  memoryItems MemoryItem[]
 
   @@index([workspaceId, createdAt])
 }
@@ -255,6 +296,7 @@ model Message {
   author       User?        @relation(fields: [authorId], references: [id])
   aiRun        AiRun?
   embedding    Embedding?
+  memoryItems  MemoryItem[]
 
   @@unique([conversationId, clientMsgId])
   @@unique([conversationId, serverSeq])

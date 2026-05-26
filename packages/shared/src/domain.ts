@@ -54,6 +54,22 @@ export interface ConversationDTO {
   createdAt: string;
 }
 
+export type MemoryItemKind = "DECISION" | "QUESTION" | "ACTION_ITEM" | "CONTEXT";
+
+export interface MemoryItemDTO {
+  id: string;
+  workspaceId: string;
+  conversationId: string;
+  messageId: string | null;
+  kind: MemoryItemKind;
+  text: string;
+  ownerId: string | null;
+  dueAt: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PresenceUser {
   userId: string;
   name: string | null;

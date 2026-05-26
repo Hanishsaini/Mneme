@@ -9,6 +9,7 @@ import { toMessageDTO } from "@/lib/db/mappers";
 import { Errors } from "@/lib/api/errors";
 import { CONVERSATION_LOCK_TTL_SECONDS } from "@/config/constants";
 import { embedMessage } from "@/features/memory/server/memory.service";
+import { extractMemoryItems } from "@/features/memory/server/extractor.service";
 import {
   completeAiRun,
   completeMessage,
@@ -207,6 +208,9 @@ async function streamAndPersist(args: StreamArgs): Promise<void> {
     void embedMessage(messageId).catch((err) =>
       console.error(`[memory] embed assistant msg ${messageId} failed:`, err),
     );
+    // Extract structured memory items (decisions/questions/action items) from
+    // the user→assistant exchange. Swallows its own errors.
+    void extractMemoryItems(messageId);
     // Roll the shared conversation memory forward — never blocks completion.
     void maybeRefreshSummary(conversationId);
   }

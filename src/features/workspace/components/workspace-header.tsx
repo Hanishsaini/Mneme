@@ -1,11 +1,13 @@
 "use client";
 
-import { Menu, Search } from "lucide-react";
+import { useState } from "react";
+import { BrainCircuit, Menu, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { PresenceAvatars } from "@/features/presence/components/presence-avatars";
 import { AccountMenu } from "@/features/account/components/account-menu";
+import { MemoryPanel } from "@/features/memory/components/memory-panel";
 import { useWorkspaceStore, type ConnectionStatus } from "@/stores/workspace-store";
 
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
@@ -38,6 +40,7 @@ export function WorkspaceHeader({
 }) {
   const workspace = useWorkspaceStore((s) => s.workspace);
   const connection = useWorkspaceStore((s) => s.connection);
+  const [memoryOpen, setMemoryOpen] = useState(false);
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card/40 px-3 backdrop-blur sm:px-4">
@@ -64,6 +67,25 @@ export function WorkspaceHeader({
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="hidden gap-1.5 text-muted-foreground hover:text-foreground sm:flex"
+          onClick={() => setMemoryOpen(true)}
+        >
+          <BrainCircuit className="h-3.5 w-3.5" />
+          <span className="text-xs">Memory</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="sm:hidden"
+          onClick={() => setMemoryOpen(true)}
+          aria-label="Open team memory"
+        >
+          <BrainCircuit />
+        </Button>
+        <Separator orientation="vertical" className="hidden h-6 sm:block" />
         <PresenceAvatars />
         <Separator orientation="vertical" className="hidden h-6 sm:block" />
         <Button
@@ -88,6 +110,7 @@ export function WorkspaceHeader({
         </Button>
         <AccountMenu />
       </div>
+      <MemoryPanel open={memoryOpen} onOpenChange={setMemoryOpen} />
     </header>
   );
 }

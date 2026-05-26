@@ -1,6 +1,7 @@
 import type {
   CanvasDocument,
   Conversation,
+  MemoryItem,
   Message,
   Workspace,
   WorkspaceMember,
@@ -9,6 +10,7 @@ import type {
 import type {
   CanvasDocumentDTO,
   ConversationDTO,
+  MemoryItemDTO,
   MessageDTO,
   WorkspaceDTO,
   WorkspaceMemberDTO,
@@ -71,6 +73,22 @@ export function toMemberDTO(
       // semantic `avatarUrl` name. Mapping happens only here.
       avatarUrl: m.user.image,
     },
+  };
+}
+
+export function toMemoryItemDTO(m: MemoryItem): MemoryItemDTO {
+  return {
+    id: m.id,
+    workspaceId: m.workspaceId,
+    conversationId: m.conversationId,
+    messageId: m.messageId,
+    kind: m.kind,
+    text: m.text,
+    ownerId: m.ownerId,
+    dueAt: m.dueAt?.toISOString() ?? null,
+    resolvedAt: m.resolvedAt?.toISOString() ?? null,
+    createdAt: m.createdAt.toISOString(),
+    updatedAt: m.updatedAt.toISOString(),
   };
 }
 
