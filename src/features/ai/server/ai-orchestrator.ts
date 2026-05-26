@@ -182,11 +182,11 @@ export async function* runAiTurnStream(
     throw Errors.conflict("The AI is already responding in this conversation.");
   }
 
-  // We always need this for cleanup even on early failures.
+  // We always need these for cleanup even on early failures.
   let assistantMessageId: string | null = null;
   let runId: string | null = null;
   let accumulated = "";
-  let completedNaturally = false;
+  let finalized = false; // true once the message row has reached its terminal state
 
   try {
     // (1) Persist user message idempotently. A reconnect that re-POSTs the
@@ -298,7 +298,7 @@ export async function* runAiTurnStream(
       usage,
     );
     await completeAiRun(assistantMessage.id);
-    completedNaturally = true;
+    finalized = true;
     if (!signal?.aborted) {
       yield {
         type: "ai_completed",
@@ -311,6 +311,7 @@ export async function* runAiTurnStream(
     if (assistantMessageId) {
       await failMessage(assistantMessageId, accumulated).catch(() => {});
       await failAiRun(assistantMessageId, String(err)).catch(() => {});
+      finalized = true;
     }
     if (runId) {
       yield {
@@ -324,10 +325,11 @@ export async function* runAiTurnStream(
   } finally {
     await releaseLock(lock).catch(() => {});
 
-    // If we broke early without natural completion, persist what we have
-    // as the partial result. The message stays STREAMING in the DB if we
-    // never updated it, so writers downstream need a definitive state.
-    if (assistantMessageId && !completedNaturally) {
+    // Belt-and-braces: only finalize-as-complete in the finally if neither
+    // the try-block (natural / stop) nor the catch-block (error) already
+    // landed the row in a terminal state. Without this guard, a STREAMING
+    // row left behind by an unexpected exception would persist forever.
+    if (assistantMessageId && !finalized) {
       await completeMessage(assistantMessageId, accumulated, null).catch(() => {});
       await completeAiRun(assistantMessageId).catch(() => {});
     }

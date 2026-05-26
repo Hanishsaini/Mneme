@@ -39,7 +39,7 @@ const serverSchema = z.object({
     z.string().default("llama-3.3-70b-versatile"),
   ),
   GEMINI_API_KEY: z.preprocess(empty, z.string().optional()),
-  GEMINI_MODEL: z.preprocess(empty, z.string().default("gemini-1.5-flash")),
+  GEMINI_MODEL: z.preprocess(empty, z.string().default("gemini-2.5-flash")),
   OPENAI_API_KEY: z.preprocess(empty, z.string().optional()),
   OPENAI_MODEL: z.preprocess(empty, z.string().default("gpt-4o-mini")),
 

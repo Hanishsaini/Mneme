@@ -4,9 +4,9 @@ import { getServerEnv } from "@/config/env";
 import type { AiProvider, AiStreamInput, AiUsage } from "./types";
 
 /**
- * Gemini — the secondary free-tier fallback. Default model: gemini-1.5-flash
- * (generous free quota, fast). Used automatically when Groq is unavailable
- * or errors before streaming begins.
+ * Gemini — the secondary free-tier fallback. Default model: gemini-2.5-flash
+ * (generous free quota, fast, current generation). Used automatically when
+ * Groq is unavailable or errors before streaming begins.
  *
  * Gemini's API differs from the OpenAI shape in two ways the adapter below
  * normalizes: the system prompt is a model-level `systemInstruction`, and
