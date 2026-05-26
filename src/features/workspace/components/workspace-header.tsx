@@ -3,34 +3,20 @@
 import { useState } from "react";
 import { BrainCircuit, Menu, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { PresenceAvatars } from "@/features/presence/components/presence-avatars";
 import { AccountMenu } from "@/features/account/components/account-menu";
 import { MemoryPanel } from "@/features/memory/components/memory-panel";
 import { useStaleCount } from "@/features/memory/hooks/use-stale-count";
-import { useWorkspaceStore, type ConnectionStatus } from "@/stores/workspace-store";
-
-const STATUS_LABEL: Record<ConnectionStatus, string> = {
-  connecting: "Connecting…",
-  live: "Live",
-  reconnecting: "Reconnecting…",
-  offline: "Offline",
-};
-
-const STATUS_VARIANT: Record<
-  ConnectionStatus,
-  "default" | "secondary" | "destructive"
-> = {
-  connecting: "secondary",
-  live: "default",
-  reconnecting: "secondary",
-  offline: "destructive",
-};
+import { useWorkspaceStore } from "@/stores/workspace-store";
 
 /**
- * Top chrome: mobile menu trigger, workspace name + connection status,
- * presence avatars, command-palette trigger, sign-out.
+ * Top chrome: mobile menu trigger, workspace name, Memory button (with
+ * stale-count badge), command-palette trigger, account menu.
+ *
+ * The old "Live / Reconnecting…" status badge and presence avatars were
+ * tied to the socket connection — both removed now that chat streams
+ * directly over SSE. A future multi-user reintroduction will reinstate
+ * them.
  */
 export function WorkspaceHeader({
   onMenuClick,
@@ -40,7 +26,6 @@ export function WorkspaceHeader({
   onOpenPalette: () => void;
 }) {
   const workspace = useWorkspaceStore((s) => s.workspace);
-  const connection = useWorkspaceStore((s) => s.connection);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const { count: staleCount, refresh: refreshStale } = useStaleCount(
     workspace?.id ?? null,
@@ -61,13 +46,6 @@ export function WorkspaceHeader({
         <span className="truncate font-semibold">
           {workspace?.name ?? "Workspace"}
         </span>
-        <Badge variant={STATUS_VARIANT[connection]} className="gap-1">
-          <span
-            className="h-1.5 w-1.5 rounded-full bg-current"
-            aria-hidden
-          />
-          {STATUS_LABEL[connection]}
-        </Badge>
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
@@ -101,8 +79,6 @@ export function WorkspaceHeader({
             <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
           )}
         </Button>
-        <Separator orientation="vertical" className="hidden h-6 sm:block" />
-        <PresenceAvatars />
         <Separator orientation="vertical" className="hidden h-6 sm:block" />
         <Button
           variant="outline"
