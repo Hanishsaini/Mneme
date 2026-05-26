@@ -14,6 +14,7 @@ import {
 } from "@/config/constants";
 import { embedMessage } from "@/features/memory/server/memory.service";
 import { extractMemoryItems } from "@/features/memory/server/extractor.service";
+import { maybeGenerateTitle } from "@/features/conversation/server/title.service";
 import {
   completeAiRun,
   completeMessage,
@@ -48,7 +49,10 @@ export type AiStreamEvent =
   | { type: "ai_started"; runId: string; messageId: string }
   | { type: "ai_delta"; runId: string; token: string }
   | { type: "ai_completed"; runId: string; message: MessageDTO }
-  | { type: "ai_error"; runId: string; error: string };
+  | { type: "ai_error"; runId: string; error: string }
+  /** First-turn auto-title — fires once per conversation, just after the
+   *  first ai_completed. Clients update the sidebar in place. */
+  | { type: "conversation_titled"; conversationId: string; title: string };
 
 /**
  * The hot path. Invoked by /api/ai/stream. Steps:
@@ -305,6 +309,23 @@ export async function* runAiTurnStream(
         runId: run.id,
         message: toMessageDTO(finalMessage),
       };
+
+      // Auto-title the conversation from the first exchange. Inline
+      // because we want the title on screen within a second or two of
+      // the completion event, but wrapped so a slow/failed generation
+      // can never poison the stream — we just skip the event.
+      try {
+        const newTitle = await maybeGenerateTitle(conversationId);
+        if (newTitle) {
+          yield {
+            type: "conversation_titled",
+            conversationId,
+            title: newTitle,
+          };
+        }
+      } catch (err) {
+        console.error(`[title] post-completion title gen failed:`, err);
+      }
     }
   } catch (err) {
     console.error(`[ai-orchestrator] SSE run failed:`, err);

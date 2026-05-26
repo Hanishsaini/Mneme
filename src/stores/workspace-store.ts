@@ -72,6 +72,10 @@ interface WorkspaceState {
   // ── actions: thread list ─────────────────────────────────────────────
   upsertConversation: (conversation: ConversationDTO) => void;
   removeConversation: (id: string) => void;
+  /** Patch just the title of an existing conversation. Used by the
+   *  post-first-turn auto-title pipeline; keeps the active-conversation
+   *  reference in sync so the active row's title also updates. */
+  renameConversation: (id: string, title: string) => void;
 
   // ── actions: membership ──────────────────────────────────────────────
   addWorkspaceMember: (member: WorkspaceMemberDTO) => void;
@@ -178,6 +182,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   removeConversation: (id) =>
     set((s) => ({
       conversations: s.conversations.filter((c) => c.id !== id),
+    })),
+
+  renameConversation: (id, title) =>
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === id ? { ...c, title } : c,
+      ),
+      conversation:
+        s.conversation?.id === id
+          ? { ...s.conversation, title }
+          : s.conversation,
     })),
 
   addWorkspaceMember: (member) =>

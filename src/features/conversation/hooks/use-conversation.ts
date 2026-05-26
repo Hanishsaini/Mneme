@@ -104,6 +104,13 @@ async function streamPromptToStore(args: StreamArgs): Promise<void> {
           store().completeRun(data.runId as string, data.message as MessageDTO);
           break;
         }
+        case "conversation_titled": {
+          store().renameConversation(
+            data.conversationId as string,
+            data.title as string,
+          );
+          break;
+        }
         case "ai_error": {
           const runId = (data.runId as string | null) ?? "";
           if (runId) store().failRun(runId);
