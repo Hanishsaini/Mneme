@@ -76,7 +76,14 @@ export function toMemberDTO(
   };
 }
 
-export function toMemoryItemDTO(m: MemoryItem): MemoryItemDTO {
+/** Optional Prisma `_count` on the supersedes relation. Repository helpers
+ *  that include it pass the row through; bare lookups (no _count) get a
+ *  zero default and the UI just won't render the "Revised" pill. */
+type MemoryItemWithCount = MemoryItem & {
+  _count?: { supersedes?: number };
+};
+
+export function toMemoryItemDTO(m: MemoryItemWithCount): MemoryItemDTO {
   return {
     id: m.id,
     workspaceId: m.workspaceId,
@@ -88,6 +95,9 @@ export function toMemoryItemDTO(m: MemoryItem): MemoryItemDTO {
     dueAt: m.dueAt?.toISOString() ?? null,
     resolvedAt: m.resolvedAt?.toISOString() ?? null,
     confirmedAt: m.confirmedAt?.toISOString() ?? null,
+    supersededById: m.supersededById,
+    supersededReason: m.supersededReason,
+    revisionCount: m._count?.supersedes ?? 0,
     createdAt: m.createdAt.toISOString(),
     updatedAt: m.updatedAt.toISOString(),
   };

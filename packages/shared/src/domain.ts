@@ -99,6 +99,19 @@ export interface MemoryItemDTO {
   dueAt: string | null;
   resolvedAt: string | null;
   confirmedAt: string | null;
+  /** When a newer revision has replaced this row, points at it. Live
+   *  list views filter on `supersededById IS NULL`; the per-item history
+   *  trail walks back through ancestors via this FK. */
+  supersededById: string | null;
+  /** Short LLM-generated explanation of WHY this row was superseded — the
+   *  team revised the decision, reversed a commitment, narrowed a
+   *  question. Surfaces inline in the history trail. */
+  supersededReason: string | null;
+  /** Count of direct predecessor revisions (`supersedes` reverse relation).
+   *  >0 means this row replaced an earlier one — the UI shows a "Revised"
+   *  pill. We don't walk the full chain server-side for list rendering;
+   *  the dedicated history endpoint does that on demand. */
+  revisionCount: number;
   createdAt: string;
   updatedAt: string;
 }

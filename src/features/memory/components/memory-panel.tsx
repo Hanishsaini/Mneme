@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Circle,
   ExternalLink,
+  History,
   Loader2,
   Trash2,
 } from "lucide-react";
@@ -399,13 +400,24 @@ function MemoryRow({
         >
           {item.text}
         </p>
-        <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-          {reviewMode
-            ? `${daysSince(item.confirmedAt ?? item.createdAt)}d since ${item.confirmedAt ? "confirmed" : "logged"}`
-            : new Date(item.createdAt).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })}
+        <p className="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+          <span>
+            {reviewMode
+              ? `${daysSince(item.confirmedAt ?? item.createdAt)}d since ${item.confirmedAt ? "confirmed" : "logged"}`
+              : new Date(item.createdAt).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
+          </span>
+          {item.revisionCount > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-1.5 py-0 normal-case tracking-normal text-violet-300"
+              title="This item replaced earlier revisions. Future versions will get the dedicated history viewer."
+            >
+              <History className="h-2.5 w-2.5" />
+              Revised
+            </span>
+          )}
         </p>
       </div>
 

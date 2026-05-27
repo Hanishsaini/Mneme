@@ -1,5 +1,4 @@
 import "server-only";
-import type { MemoryItem } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 
 /**
@@ -34,7 +33,7 @@ function thresholdDate(days: number): Date {
  * Prisma OR query covering all four kinds — keeps the round-trip count to
  * one and lets Postgres use the `(workspaceId, kind)` index.
  */
-export function listStaleMemoryItems(workspaceId: string): Promise<MemoryItem[]> {
+export function listStaleMemoryItems(workspaceId: string) {
   const decisionCutoff = thresholdDate(STALE_DECISION_DAYS);
   const contextCutoff = thresholdDate(STALE_CONTEXT_DAYS);
   const questionCutoff = thresholdDate(STALE_QUESTION_DAYS);
@@ -44,6 +43,10 @@ export function listStaleMemoryItems(workspaceId: string): Promise<MemoryItem[]>
     where: {
       workspaceId,
       resolvedAt: null,
+      // Superseded items have been revised by a newer revision — staleness
+      // alerts about the OLD version of a decision would be confusing, so
+      // skip them. The newer head, if itself stale, still surfaces here.
+      supersededById: null,
       OR: [
         // DECISION / CONTEXT: stale when the last confirmation (or creation
         // if never confirmed) is older than the threshold. Modeled with two
@@ -67,6 +70,7 @@ export function listStaleMemoryItems(workspaceId: string): Promise<MemoryItem[]>
       ],
     },
     orderBy: { createdAt: "asc" },
+    include: { _count: { select: { supersedes: true } } },
   });
 }
 

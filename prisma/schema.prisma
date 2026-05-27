@@ -207,16 +207,32 @@ model MemoryItem {
   /// clock for DECISION/CONTEXT kinds. Null = never reconfirmed since
   /// extraction, so staleness measures from `createdAt`.
   confirmedAt    DateTime?
+  /// pgvector embedding of `text`, written at insert time. Powers the
+  /// operation-emitter dedup pipeline — before persisting a freshly
+  /// extracted fact we cosine-search this column inside the workspace
+  /// for near-duplicates and let the LLM decide ADD/UPDATE/DELETE/NONE.
+  /// Same dimensionality as the message embeddings (Gemini, 768).
+  embedding      Unsupported("vector(768)")?
+  /// When a newer item supersedes this one (team revised a decision,
+  /// reversed a commitment), `supersededById` points to the replacement
+  /// and `supersededReason` carries the LLM's short rationale. Live
+  /// memory views filter to `supersededById IS NULL`; superseded items
+  /// remain queryable for the per-item history trail.
+  supersededById   String?
+  supersededReason String?  @db.Text
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
   workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   message      Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  supersededBy MemoryItem?  @relation("MemoryItemSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes   MemoryItem[] @relation("MemoryItemSupersession")
 
   @@index([workspaceId, kind])
   @@index([conversationId])
   @@index([workspaceId, resolvedAt])
+  @@index([supersededById])
 }
 
 /// Single-use invite tokens that grant membership on /invite/[token].
