@@ -68,6 +68,26 @@ export interface RelatedMemoryHitDTO {
   createdAt: string;
 }
 
+/** A single source cited inside an "ask your team's memory" answer. */
+export interface MemoryAskSourceDTO {
+  /** 1-based index the synthesized answer references via `[N]` markers. */
+  index: number;
+  messageId: string;
+  conversationId: string;
+  conversationTitle: string;
+  snippet: string;
+  similarity: number;
+  createdAt: string;
+}
+
+/** Response shape for POST /api/workspaces/:id/memory/ask. The answer is
+ *  an AI-synthesized paragraph that cites the workspace's own past
+ *  discussions via `[1]`-style markers tied to the sources array. */
+export interface MemoryAskResponseDTO {
+  answer: string;
+  sources: MemoryAskSourceDTO[];
+}
+
 export interface MemoryItemDTO {
   id: string;
   workspaceId: string;

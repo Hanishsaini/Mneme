@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace-store";
+import { MemoryAskView } from "./memory-ask-view";
 
 /**
  * Memory panel — surfaces structured items extracted from past AI turns
@@ -38,9 +39,10 @@ import { useWorkspaceStore } from "@/stores/workspace-store";
  * without waiting for the next interval poll.
  */
 
-type FilterKind = "NEEDS_REVIEW" | "ALL" | MemoryItemKind;
+type FilterKind = "ASK" | "NEEDS_REVIEW" | "ALL" | MemoryItemKind;
 
 const TABS: Array<{ key: FilterKind; label: string }> = [
+  { key: "ASK", label: "Ask" },
   { key: "NEEDS_REVIEW", label: "Needs review" },
   { key: "ALL", label: "All" },
   { key: "DECISION", label: "Decisions" },
@@ -96,6 +98,13 @@ export function MemoryPanel({
 
   const fetchItems = useCallback(async () => {
     if (!workspace) return;
+    // The Ask tab is interactive — it doesn't fetch a list of items, it
+    // submits a question per user action. Skip the GET entirely.
+    if (filter === "ASK") {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -131,6 +140,7 @@ export function MemoryPanel({
 
   const counts = useMemo(() => {
     const c: Record<FilterKind, number> = {
+      ASK: 0,
       NEEDS_REVIEW: 0,
       ALL: items.length,
       DECISION: 0,
@@ -213,6 +223,7 @@ export function MemoryPanel({
   }
 
   const isReviewMode = filter === "NEEDS_REVIEW";
+  const isAskMode = filter === "ASK";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -270,14 +281,19 @@ export function MemoryPanel({
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="px-5 py-4">
-            {isReviewMode && items.length > 0 && (
+            {isAskMode && workspace ? (
+              <MemoryAskView
+                workspaceId={workspace.id}
+                onClose={() => onOpenChange(false)}
+              />
+            ) : isReviewMode && items.length > 0 ? (
               <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
                 These items haven't been touched in a while. Confirm if still
                 true, mark done, or remove if no longer relevant.
               </div>
-            )}
+            ) : null}
 
-            {loading && items.length === 0 ? (
+            {!isAskMode && (loading && items.length === 0 ? (
               <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Loading memory…
@@ -309,7 +325,7 @@ export function MemoryPanel({
                   />
                 ))}
               </ul>
-            )}
+            ))}
           </div>
         </ScrollArea>
       </DialogContent>
