@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { resolveEmbeddingProvider } from "./embedding-provider";
+import { describeHit, hybridSearchEmbeddings } from "./hybrid-search";
 
 /**
  * Team Memory — store + search vector embeddings of messages, scoped to
@@ -108,18 +109,20 @@ export interface RelatedMemoryHit {
   createdAt: string;
 }
 
-/** Cosine distances above this aren't "related enough" to surface in the UI.
- *  Empirically tuned for Gemini text-embedding-004: <0.3 is on-topic, ~0.55
- *  is loosely-related, >0.7 is noise. We err on the side of fewer-better
- *  hits — the proactive surface only earns trust if every suggestion lands. */
-const RELATED_DISTANCE_THRESHOLD = 0.55;
+/** Hits below this similarity (post-hybrid-fusion, scaled to [0,1])
+ *  aren't "related enough" to surface in the UI. Hand-tuned: ~0.4 is the
+ *  knee where vector-only matches without a BM25 corroboration start
+ *  feeling speculative. We err on the side of fewer-better hits — the
+ *  proactive surface only earns trust if every suggestion lands. */
+const RELATED_SIMILARITY_THRESHOLD = 0.4;
 const RELATED_SNIPPET_CHARS = 220;
 
 /**
- * Cosine-similarity search across one workspace's embeddings. Returns the
- * top-K closest messages to `query` plus their distances (0 = identical,
- * 1 = orthogonal, 2 = opposite). Distance is computed via the `<=>`
- * pgvector operator, which uses the HNSW index when present.
+ * Workspace memory search — now hybrid. Returns the top-K hits as ranked
+ * by RRF fusion of pgvector cosine + Postgres BM25. The `distance` field
+ * stays in the return shape for backwards compatibility (Ask service
+ * downstream uses it), populated from the vector half of the fusion if
+ * that channel contributed; null when only BM25 matched.
  */
 export async function searchMemory(
   workspaceId: string,
@@ -128,26 +131,18 @@ export async function searchMemory(
 ): Promise<MemorySearchHit[]> {
   if (!query.trim()) return [];
 
-  const provider = resolveEmbeddingProvider();
-  const queryVec = await provider.embed(query);
-  const literal = vectorLiteral(queryVec);
-
-  return prisma.$queryRawUnsafe<MemorySearchHit[]>(
-    `SELECT
-       "messageId",
-       "conversationId",
-       content,
-       (embedding <=> $1::vector)::float AS distance,
-       "createdAt"
-     FROM "Embedding"
-     WHERE "workspaceId" = $2
-       AND embedding IS NOT NULL
-     ORDER BY embedding <=> $1::vector
-     LIMIT $3`,
-    literal,
-    workspaceId,
-    k,
-  );
+  const hits = await hybridSearchEmbeddings(workspaceId, query, { k });
+  return hits.map((h) => ({
+    messageId: h.messageId,
+    conversationId: h.conversationId,
+    content: h.content,
+    // Down-stream callers expect a distance; provide one. When only
+    // BM25 contributed we synthesize a "moderately close" distance from
+    // the similarity so ranking stays meaningful.
+    distance:
+      h.distance ?? Math.max(0, 1 - describeHit(h).similarity),
+    createdAt: h.createdAt,
+  }));
 }
 
 interface RelatedSearchOptions {
@@ -155,25 +150,15 @@ interface RelatedSearchOptions {
   k?: number;
 }
 
-interface RawRelatedRow {
-  messageId: string;
-  conversationId: string;
-  conversationTitle: string;
-  content: string;
-  distance: number;
-  createdAt: Date;
-}
-
 /**
  * Context-triggered surfacing — given a query (typically the user's
  * in-progress prompt), return the top-K *related* messages from OTHER
- * conversations in the same workspace. Filters by a similarity threshold
- * so off-topic noise doesn't pollute the sidebar; without that, every
- * keystroke would yield three vaguely-shaped suggestions and the user
- * would learn to ignore them.
+ * conversations in the same workspace. Now hybrid: pgvector cosine +
+ * Postgres BM25, fused via reciprocal rank fusion. Filters below the
+ * similarity threshold so off-topic noise doesn't pollute the strip.
  *
- * Returns conversation titles inline (joined in SQL) so the UI doesn't
- * need a second round-trip per hit.
+ * Conversation titles get joined separately (post-fusion) since the
+ * hybrid CTE returns embedding-row columns only.
  */
 export async function searchRelatedToCompose(
   workspaceId: string,
@@ -184,65 +169,42 @@ export async function searchRelatedToCompose(
   if (!trimmed) return [];
 
   const k = options.k ?? 3;
-  const provider = resolveEmbeddingProvider();
-  const queryVec = await provider.embed(trimmed);
-  const literal = vectorLiteral(queryVec);
+  // Overfetch from the fusion so the post-threshold filter has headroom
+  // to drop weak hits without leaving the user with fewer than k results
+  // when there ARE strong ones lower in the pool.
+  const hits = await hybridSearchEmbeddings(workspaceId, trimmed, {
+    k: Math.max(k * 2, 6),
+    excludeConversationId: options.excludeConversationId,
+  });
+  if (hits.length === 0) return [];
 
-  // Fetch a few extra and filter by threshold client-side — keeps the SQL
-  // simple and lets us return only the genuinely-related hits.
-  const overfetch = Math.max(k * 2, 6);
+  const ranked = hits
+    .map((h) => ({ hit: h, ...describeHit(h) }))
+    .filter((r) => r.similarity >= RELATED_SIMILARITY_THRESHOLD)
+    .slice(0, k);
+  if (ranked.length === 0) return [];
 
-  const rows = options.excludeConversationId
-    ? await prisma.$queryRawUnsafe<RawRelatedRow[]>(
-        `SELECT
-           e."messageId",
-           e."conversationId",
-           c."title" AS "conversationTitle",
-           e.content,
-           (e.embedding <=> $1::vector)::float AS distance,
-           e."createdAt"
-         FROM "Embedding" e
-         JOIN "Conversation" c ON c.id = e."conversationId"
-         WHERE e."workspaceId" = $2
-           AND e.embedding IS NOT NULL
-           AND e."conversationId" <> $3
-         ORDER BY e.embedding <=> $1::vector
-         LIMIT $4`,
-        literal,
-        workspaceId,
-        options.excludeConversationId,
-        overfetch,
-      )
-    : await prisma.$queryRawUnsafe<RawRelatedRow[]>(
-        `SELECT
-           e."messageId",
-           e."conversationId",
-           c."title" AS "conversationTitle",
-           e.content,
-           (e.embedding <=> $1::vector)::float AS distance,
-           e."createdAt"
-         FROM "Embedding" e
-         JOIN "Conversation" c ON c.id = e."conversationId"
-         WHERE e."workspaceId" = $2
-           AND e.embedding IS NOT NULL
-         ORDER BY e.embedding <=> $1::vector
-         LIMIT $3`,
-        literal,
-        workspaceId,
-        overfetch,
-      );
+  // Conversation titles — one IN-clause lookup, joined client-side. Cheap
+  // and keeps the fusion CTE generic across callers that don't need them.
+  const convIds = Array.from(new Set(ranked.map((r) => r.hit.conversationId)));
+  const titles = new Map(
+    (
+      await prisma.conversation.findMany({
+        where: { id: { in: convIds } },
+        select: { id: true, title: true },
+      })
+    ).map((c) => [c.id, c.title]),
+  );
 
-  return rows
-    .filter((r) => r.distance < RELATED_DISTANCE_THRESHOLD)
-    .slice(0, k)
-    .map((r) => ({
-      messageId: r.messageId,
-      conversationId: r.conversationId,
-      conversationTitle: r.conversationTitle,
-      snippet: r.content.length > RELATED_SNIPPET_CHARS
-        ? `${r.content.slice(0, RELATED_SNIPPET_CHARS - 1)}…`
-        : r.content,
-      similarity: Math.max(0, Math.min(1, 1 - r.distance)),
-      createdAt: r.createdAt.toISOString(),
-    }));
+  return ranked.map(({ hit, similarity }) => ({
+    messageId: hit.messageId,
+    conversationId: hit.conversationId,
+    conversationTitle: titles.get(hit.conversationId) ?? "Untitled",
+    snippet:
+      hit.content.length > RELATED_SNIPPET_CHARS
+        ? `${hit.content.slice(0, RELATED_SNIPPET_CHARS - 1)}…`
+        : hit.content,
+    similarity,
+    createdAt: hit.createdAt.toISOString(),
+  }));
 }

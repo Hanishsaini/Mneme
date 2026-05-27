@@ -173,6 +173,12 @@ model Embedding {
   workspaceId    String
   content        String   @db.Text
   embedding      Unsupported("vector(768)")?
+  /// Postgres-generated tsvector of `content` (english stemmer). Powers
+  /// the BM25 half of hybrid retrieval — merged with the vector cosine
+  /// hits via reciprocal rank fusion at query time. Read-only from the
+  /// app's perspective; the column is `GENERATED ALWAYS AS (...) STORED`
+  /// so Postgres maintains it automatically and Prisma never writes it.
+  contentTsv     Unsupported("tsvector")?
   createdAt      DateTime @default(now())
 
   message      Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
