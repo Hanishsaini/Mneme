@@ -2,50 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Mneme visual identity — "archive / dossier" aesthetic.
+ *
+ * Signature color is deep amber (HSL ~32 96% 47%) rather than the
+ * generic violet of every other AI-memory tool. Amber reads as warm,
+ * institutional, "this is a record" — the right register for a memory
+ * product. Backgrounds are warm-graphite in dark mode, off-cream in
+ * light, never pure black or pure white — both feel sterile and clinical.
+ *
+ * Three font families wired in layout.tsx:
+ *   --font-sans   Inter           — body, UI controls
+ *   --font-serif  Newsreader      — landing hero, dossier headlines
+ *   --font-mono   JetBrains Mono  — IDs, timestamps, raw system bits
+ */
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
-    --radius: 0.65rem;
+    /* Off-cream paper, not pure white */
+    --background: 36 30% 97%;
+    --foreground: 28 15% 12%;
+    --card: 36 30% 99%;
+    --card-foreground: 28 15% 12%;
+    --popover: 36 30% 99%;
+    --popover-foreground: 28 15% 12%;
+    /* Amber as primary — the signature */
+    --primary: 32 96% 47%;
+    --primary-foreground: 36 30% 97%;
+    --secondary: 36 20% 92%;
+    --secondary-foreground: 28 15% 12%;
+    --muted: 36 18% 93%;
+    --muted-foreground: 28 8% 42%;
+    --accent: 36 25% 90%;
+    --accent-foreground: 28 15% 12%;
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 36 30% 97%;
+    --border: 32 14% 86%;
+    --input: 32 14% 86%;
+    --ring: 32 96% 47%;
+    --radius: 0.5rem;
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 5.5%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 5.5%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 14%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 14%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 16%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 50%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 16%;
-    --input: 240 3.7% 18%;
-    --ring: 240 4.9% 83.9%;
+    /* Warm graphite, not pure black — keeps the parchment warmth in
+     * the dark surface so amber accents don't look neon. */
+    --background: 28 12% 7%;
+    --foreground: 36 30% 95%;
+    --card: 28 12% 10%;
+    --card-foreground: 36 30% 95%;
+    --popover: 28 12% 10%;
+    --popover-foreground: 36 30% 95%;
+    /* Slightly brighter amber for dark surfaces */
+    --primary: 32 95% 58%;
+    --primary-foreground: 28 12% 7%;
+    --secondary: 28 8% 16%;
+    --secondary-foreground: 36 30% 95%;
+    --muted: 28 8% 14%;
+    --muted-foreground: 36 15% 65%;
+    --accent: 28 8% 18%;
+    --accent-foreground: 36 30% 95%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 36 30% 95%;
+    --border: 28 8% 18%;
+    --input: 28 8% 20%;
+    --ring: 32 95% 58%;
   }
 }
 
@@ -55,7 +75,17 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+  }
+  /* Serif headlines opt in via .font-serif — used by hero and the
+   * "dossier" section headers on the landing + memory panel. */
+  .font-serif {
+    font-family: var(--font-serif), Georgia, serif;
+    font-feature-settings: "kern" 1, "liga" 1;
+    letter-spacing: -0.012em;
+  }
+  .font-mono {
+    font-family: var(--font-mono), ui-monospace, monospace;
   }
 }
 
@@ -66,5 +96,24 @@
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--border)) transparent;
+  }
+  /* Subtle aged-paper texture for archive surfaces. CSS-only, no asset. */
+  .paper-grain {
+    background-image:
+      radial-gradient(
+        circle at 25% 30%,
+        hsl(var(--foreground) / 0.018) 0,
+        transparent 50%
+      ),
+      radial-gradient(
+        circle at 75% 70%,
+        hsl(var(--foreground) / 0.012) 0,
+        transparent 50%
+      );
+  }
+  /* Hairline-rule used to separate dossier rows. Slightly warmer than
+   * the standard border so amber pages don't feel grey. */
+  .rule-warm {
+    @apply border-[hsl(32,14%,82%)] dark:border-[hsl(28,8%,20%)];
   }
 }
