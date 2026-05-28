@@ -4,16 +4,25 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
+  ArrowDown,
   BrainCircuit,
   CheckCircle2,
+  ChevronDown,
   Circle,
   ExternalLink,
+  GitBranch,
   History,
   Loader2,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { MemoryItemDTO, MemoryItemKind } from "@workspace/shared";
+import type {
+  MemoryItemDTO,
+  MemoryItemKind,
+  RevisitedDecisionDTO,
+  RevisitedMemoryResponseDTO,
+} from "@workspace/shared";
 import {
   Dialog,
   DialogContent,
@@ -40,11 +49,12 @@ import { MemoryAskView } from "./memory-ask-view";
  * without waiting for the next interval poll.
  */
 
-type FilterKind = "ASK" | "NEEDS_REVIEW" | "ALL" | MemoryItemKind;
+type FilterKind = "ASK" | "NEEDS_REVIEW" | "HISTORY" | "ALL" | MemoryItemKind;
 
 const TABS: Array<{ key: FilterKind; label: string }> = [
   { key: "ASK", label: "Ask" },
   { key: "NEEDS_REVIEW", label: "Needs review" },
+  { key: "HISTORY", label: "History" },
   { key: "ALL", label: "All" },
   { key: "DECISION", label: "Decisions" },
   { key: "QUESTION", label: "Questions" },
@@ -90,12 +100,42 @@ export function MemoryPanel({
   const [items, setItems] = useState<MemoryItemDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** "Decisions revisited recently" data — fetched alongside the panel
+   *  opening so the Needs Review surface and the header stats pill can
+   *  render without a second round-trip. */
+  const [revisited, setRevisited] = useState<RevisitedDecisionDTO[]>([]);
+  const [quarterCount, setQuarterCount] = useState(0);
 
   // Re-pick the default tab each time the panel opens, so the user always
   // lands on the most useful view for the current state.
   useEffect(() => {
     if (open) setFilter(staleCount > 0 ? "NEEDS_REVIEW" : "ALL");
   }, [open, staleCount]);
+
+  // Revisited fetch fires once per panel open — independent of the active
+  // tab, since both the Needs Review section and the header pill consume it.
+  useEffect(() => {
+    if (!open || !workspace) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/workspaces/${workspace.id}/memory/revisited`,
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as RevisitedMemoryResponseDTO;
+        if (cancelled) return;
+        setRevisited(data.items);
+        setQuarterCount(data.quarterCount);
+      } catch {
+        // Stats pill + revisited surface are progressive enhancements —
+        // don't block the panel on a transient failure.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, workspace]);
 
   const fetchItems = useCallback(async () => {
     if (!workspace) return;
@@ -120,14 +160,22 @@ export function MemoryPanel({
           `/api/workspaces/${workspace.id}/memory/items`,
           window.location.origin,
         );
-        if (filter !== "ALL") url.searchParams.set("kind", filter);
+        // History reuses /items — we just filter to revised heads client-side
+        // below. Avoids a parallel server endpoint for what is a small subset.
+        if (filter !== "ALL" && filter !== "HISTORY") {
+          url.searchParams.set("kind", filter);
+        }
       }
       const res = await fetch(url.toString());
       if (!res.ok) {
         throw new Error(`Failed to load memory (${res.status})`);
       }
       const data = (await res.json()) as { items: MemoryItemDTO[] };
-      setItems(data.items);
+      const filtered =
+        filter === "HISTORY"
+          ? data.items.filter((it) => it.revisionCount > 0)
+          : data.items;
+      setItems(filtered);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load memory");
     } finally {
@@ -143,6 +191,7 @@ export function MemoryPanel({
     const c: Record<FilterKind, number> = {
       ASK: 0,
       NEEDS_REVIEW: 0,
+      HISTORY: 0,
       ALL: items.length,
       DECISION: 0,
       QUESTION: 0,
@@ -225,6 +274,7 @@ export function MemoryPanel({
 
   const isReviewMode = filter === "NEEDS_REVIEW";
   const isAskMode = filter === "ASK";
+  const isHistoryMode = filter === "HISTORY";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -233,6 +283,17 @@ export function MemoryPanel({
           <DialogTitle className="flex items-center gap-2">
             <BrainCircuit className="h-5 w-5 text-primary" />
             Team memory
+            {quarterCount > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[11px] font-medium text-violet-300"
+                title="Memory items revised in the last 90 days"
+              >
+                <RefreshCw className="h-3 w-3" />
+                {quarterCount}{" "}
+                {quarterCount === 1 ? "decision" : "decisions"} revised this
+                quarter
+              </span>
+            )}
           </DialogTitle>
           <DialogDescription>
             Decisions, open questions, and action items extracted from past AI
@@ -287,11 +348,18 @@ export function MemoryPanel({
                 workspaceId={workspace.id}
                 onClose={() => onOpenChange(false)}
               />
-            ) : isReviewMode && items.length > 0 ? (
-              <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
-                These items haven't been touched in a while. Confirm if still
-                true, mark done, or remove if no longer relevant.
-              </div>
+            ) : isReviewMode ? (
+              <>
+                {revisited.length > 0 && (
+                  <RevisitedSection items={revisited} />
+                )}
+                {items.length > 0 && (
+                  <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+                    These items haven't been touched in a while. Confirm if
+                    still true, mark done, or remove if no longer relevant.
+                  </div>
+                )}
+              </>
             ) : null}
 
             {!isAskMode && (loading && items.length === 0 ? (
@@ -304,7 +372,18 @@ export function MemoryPanel({
                 {error}
               </div>
             ) : items.length === 0 ? (
-              <EmptyState filter={filter} />
+              // In Needs Review, the EmptyState is misleading when the
+              // revisited section above DID render content. Suppress it
+              // there — the user already sees the panel is alive.
+              isReviewMode && revisited.length > 0 ? null : (
+                <EmptyState filter={filter} />
+              )
+            ) : isHistoryMode ? (
+              <ul className="flex flex-col gap-1">
+                {items.map((it) => (
+                  <HistoryRow key={it.id} item={it} />
+                ))}
+              </ul>
             ) : (
               <ul className="flex flex-col gap-2">
                 {items.map((it) => (
@@ -490,6 +569,18 @@ function EmptyState({ filter }: { filter: FilterKind }) {
       </div>
     );
   }
+  if (filter === "HISTORY") {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+        <GitBranch className="h-8 w-8 text-muted-foreground/50" />
+        <p className="text-sm font-medium">No revised decisions yet</p>
+        <p className="max-w-xs text-xs text-muted-foreground">
+          When the team revisits a past decision and lands somewhere new,
+          the old version moves here with the rationale for the change.
+        </p>
+      </div>
+    );
+  }
   const label =
     filter === "ALL"
       ? "memory items"
@@ -504,4 +595,167 @@ function EmptyState({ filter }: { filter: FilterKind }) {
       </p>
     </div>
   );
+}
+
+/**
+ * Top-of-panel section in Needs Review: "Decisions revisited recently".
+ * Each card surfaces the Originally / Now / Why preview the extractor
+ * already wrote — same data the History tab expands fully.
+ */
+function RevisitedSection({ items }: { items: RevisitedDecisionDTO[] }) {
+  return (
+    <div className="mb-4">
+      <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        Decisions revisited recently
+      </div>
+      <ul className="flex flex-col gap-2">
+        {items.map((r) => (
+          <li
+            key={r.current.id}
+            className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2.5"
+          >
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-200">
+                Revised {r.current.revisionCount}×
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {timeAgo(r.current.updatedAt)}
+              </span>
+            </div>
+            <div className="grid grid-cols-[60px_1fr] items-baseline gap-x-2 gap-y-1 text-xs">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Originally
+              </span>
+              <span className="text-muted-foreground line-through decoration-muted-foreground/40">
+                {r.prior.text}
+              </span>
+              <span className="col-span-2 my-0.5 flex items-center gap-1.5 text-muted-foreground/60">
+                <span className="h-px flex-1 bg-border" />
+                <ArrowDown className="h-3 w-3" />
+                <span className="h-px flex-1 bg-border" />
+              </span>
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Now
+              </span>
+              <span className="leading-snug">{r.current.text}</span>
+              {r.prior.reason && (
+                <>
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Why
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {r.prior.reason}
+                  </span>
+                </>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * History tab row — current head text + a "N revisions" toggle that
+ * lazily loads the full chain from /api/memory/items/:id/history and
+ * renders each ancestor with its op label + the LLM's why.
+ */
+function HistoryRow({ item }: { item: MemoryItemDTO }) {
+  const [expanded, setExpanded] = useState(false);
+  const [chain, setChain] = useState<MemoryItemDTO[] | null>(null);
+  const [chainLoading, setChainLoading] = useState(false);
+
+  async function toggle() {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && chain === null) {
+      setChainLoading(true);
+      try {
+        const res = await fetch(`/api/memory/items/${item.id}/history`);
+        if (!res.ok) throw new Error("Could not load history");
+        const data = (await res.json()) as { items: MemoryItemDTO[] };
+        // Endpoint returns newest-first (head → root). Render oldest-first
+        // so the reader walks the decision's evolution top-down. Drop the
+        // first element (the head itself — already shown above the chain).
+        setChain(data.items.slice(1).reverse());
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Could not load history");
+        setExpanded(false);
+      } finally {
+        setChainLoading(false);
+      }
+    }
+  }
+
+  return (
+    <li className="border-b border-border/50 py-3 last:border-b-0">
+      <div className="flex items-start justify-between gap-3">
+        <p className="flex-1 break-words text-sm leading-snug">{item.text}</p>
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={expanded}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border bg-secondary/50 px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-secondary"
+        >
+          <GitBranch className="h-3 w-3" />
+          {item.revisionCount}{" "}
+          {item.revisionCount === 1 ? "revision" : "revisions"}
+          <ChevronDown
+            className={cn("h-3 w-3 transition-transform", expanded && "rotate-180")}
+          />
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="ml-1 mt-2 border-l-2 border-border/60 pl-3">
+          {chainLoading ? (
+            <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Loading history…
+            </div>
+          ) : chain && chain.length > 0 ? (
+            <ul className="flex flex-col gap-3">
+              {chain.map((entry) => (
+                <li key={entry.id}>
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="rounded-full bg-sky-500/15 px-1.5 py-0 text-[10px] font-medium text-sky-300">
+                      UPDATE
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {new Date(entry.createdAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </span>
+                  </div>
+                  <p className="text-xs leading-snug">{entry.text}</p>
+                  {entry.supersededReason && (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      {entry.supersededReason}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="py-1 text-[11px] text-muted-foreground">
+              No prior revisions found.
+            </p>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function timeAgo(iso: string): string {
+  const then = new Date(iso).getTime();
+  const days = Math.floor((Date.now() - then) / (24 * 60 * 60 * 1000));
+  if (days < 1) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days} days ago`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? "1 month ago" : `${months} months ago`;
 }

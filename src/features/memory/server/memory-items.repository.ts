@@ -59,6 +59,68 @@ export function findMemoryItemById(id: string) {
   return prisma.memoryItem.findUnique({ where: { id } });
 }
 
+/** Lookback window for the "Decisions revisited recently" panel surface.
+ *  30 days picks up the meaningful churn without flooding the section
+ *  with months-old revisions the team has long since internalized. */
+const REVISITED_LOOKBACK_DAYS = 30;
+/** Lookback for the header stats pill — "N decisions revised this quarter". */
+const QUARTER_LOOKBACK_DAYS = 90;
+const REVISITED_LIMIT = 10;
+
+/** Live memory items that replaced an earlier revision inside the lookback
+ *  window. Each result carries the immediate predecessor so the panel can
+ *  render the "Originally / Now / Why" preview without a second round-trip.
+ *
+ *  The `supersedes` self-relation is the predecessor edge — a head row may
+ *  have multiple predecessors over time, but the panel only cares about
+ *  the most recent one (the row the *latest* revision displaced). We take
+ *  `take: 1, orderBy: createdAt desc` on the include to pick that one. */
+export async function listRevisitedDecisions(workspaceId: string) {
+  const since = new Date(
+    Date.now() - REVISITED_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
+  );
+  return prisma.memoryItem.findMany({
+    where: {
+      workspaceId,
+      supersededById: null,
+      updatedAt: { gte: since },
+      supersedes: { some: {} },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: REVISITED_LIMIT,
+    include: {
+      _count: { select: { supersedes: true } },
+      supersedes: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          text: true,
+          supersededReason: true,
+          createdAt: true,
+        },
+      },
+    },
+  });
+}
+
+/** Count of distinct live memory items that have ANY supersession activity
+ *  inside the last 90 days. Used by the header pill. Counts heads, not edges,
+ *  so a decision revised three times in the window counts as one. */
+export function countRevisedThisQuarter(workspaceId: string): Promise<number> {
+  const since = new Date(
+    Date.now() - QUARTER_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
+  );
+  return prisma.memoryItem.count({
+    where: {
+      workspaceId,
+      supersededById: null,
+      updatedAt: { gte: since },
+      supersedes: { some: {} },
+    },
+  });
+}
+
 export function updateMemoryItem(
   id: string,
   data: {

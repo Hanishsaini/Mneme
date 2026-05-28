@@ -116,6 +116,34 @@ export interface MemoryItemDTO {
   updatedAt: string;
 }
 
+/** One row in the "Decisions revisited recently" panel surface. The team
+ *  replaced a prior decision with a newer one inside the lookback window;
+ *  `current` is the live row, `prior` is the row it directly superseded
+ *  (with the LLM-generated `reason` carried from the supersession edge).
+ *
+ *  The shape is intentionally one-step — older ancestors live in the
+ *  History tab via the per-item `/history` endpoint. This DTO is just the
+ *  "before / after / why" preview. */
+export interface RevisitedDecisionDTO {
+  current: MemoryItemDTO;
+  prior: {
+    id: string;
+    text: string;
+    /** From the supersession edge, not the prior row — `prior.supersededReason`
+     *  is the LLM's "why this got replaced" written when the new row landed. */
+    reason: string | null;
+    createdAt: string;
+  };
+}
+
+/** Response shape for GET /api/workspaces/:id/memory/revisited. */
+export interface RevisitedMemoryResponseDTO {
+  items: RevisitedDecisionDTO[];
+  /** Count of memory items revised within the last 90 days. Powers the
+   *  "N decisions revised this quarter" pill on the Memory header. */
+  quarterCount: number;
+}
+
 export interface PresenceUser {
   userId: string;
   name: string | null;

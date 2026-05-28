@@ -12,6 +12,7 @@ import type {
   ConversationDTO,
   MemoryItemDTO,
   MessageDTO,
+  RevisitedDecisionDTO,
   WorkspaceDTO,
   WorkspaceMemberDTO,
 } from "@workspace/shared";
@@ -100,6 +101,39 @@ export function toMemoryItemDTO(m: MemoryItemWithCount): MemoryItemDTO {
     revisionCount: m._count?.supersedes ?? 0,
     createdAt: m.createdAt.toISOString(),
     updatedAt: m.updatedAt.toISOString(),
+  };
+}
+
+/** Head row of a recently-revised decision, with its immediate predecessor
+ *  preloaded for the "Originally / Now / Why" panel preview. The repository
+ *  `listRevisitedDecisions` query shapes the row exactly like this — one
+ *  `supersedes` entry, ordered newest-first. */
+type MemoryItemWithRevision = MemoryItemWithCount & {
+  supersedes: {
+    id: string;
+    text: string;
+    supersededReason: string | null;
+    createdAt: Date;
+  }[];
+};
+
+export function toRevisitedDecisionDTO(
+  m: MemoryItemWithRevision,
+): RevisitedDecisionDTO | null {
+  const prior = m.supersedes[0];
+  // Defensive: the repository query filters on `supersedes: { some: {} }` so
+  // there should always be at least one predecessor. If a race deleted the
+  // predecessor between the count check and the load, skip the row rather
+  // than render an empty preview.
+  if (!prior) return null;
+  return {
+    current: toMemoryItemDTO(m),
+    prior: {
+      id: prior.id,
+      text: prior.text,
+      reason: prior.supersededReason,
+      createdAt: prior.createdAt.toISOString(),
+    },
   };
 }
 
