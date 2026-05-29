@@ -8,6 +8,7 @@ import { Markdown } from "@/components/ui/markdown";
 import type { MessageDTO } from "@workspace/shared";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { APP_NAME } from "@/config/constants";
+import { CapturedSurface } from "./captured-surface";
 
 /**
  * A single settled message. The streaming assistant bubble is a separate
@@ -72,6 +73,9 @@ export function MessageBubble({ message }: { message: MessageDTO }) {
           )}
         </div>
         <Markdown content={message.content} />
+        {isAssistant && message.status === "COMPLETE" && message.content && (
+          <CapturedSurface messageId={message.id} />
+        )}
       </div>
 
       {message.content && (

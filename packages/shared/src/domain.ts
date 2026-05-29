@@ -144,6 +144,20 @@ export interface RevisitedMemoryResponseDTO {
   quarterCount: number;
 }
 
+/** What the extractor wrote during a single AI turn. Drives the inline
+ *  "Captured" pill + "Revises X" callout that renders directly under each
+ *  completed assistant message — the felt moment of "the memory layer just
+ *  did something for us."
+ *
+ *  `added` is brand-new items (revisionCount === 0). `revised` is items that
+ *  replaced an earlier revision (revisionCount > 0), each paired with the
+ *  immediate predecessor so the Originally → Now → Why card renders without
+ *  a second round-trip. */
+export interface MessageCapturedDTO {
+  added: MemoryItemDTO[];
+  revised: RevisitedDecisionDTO[];
+}
+
 export interface PresenceUser {
   userId: string;
   name: string | null;

@@ -104,6 +104,33 @@ export async function listRevisitedDecisions(workspaceId: string) {
   });
 }
 
+/** Items the extractor wrote for THIS specific assistant turn. Powers the
+ *  inline "Captured" pill + "Revises X" callout that renders directly under
+ *  each completed AI message — the felt moment of "the memory layer just did
+ *  something for us."
+ *
+ *  Includes immediate predecessor for items with revisionCount > 0 so the
+ *  Originally → Now → Why card can render without a second round-trip. */
+export async function listItemsForMessage(messageId: string) {
+  return prisma.memoryItem.findMany({
+    where: { messageId, supersededById: null },
+    orderBy: { createdAt: "asc" },
+    include: {
+      _count: { select: { supersedes: true } },
+      supersedes: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          text: true,
+          supersededReason: true,
+          createdAt: true,
+        },
+      },
+    },
+  });
+}
+
 /** Count of distinct live memory items that have ANY supersession activity
  *  inside the last 90 days. Used by the header pill. Counts heads, not edges,
  *  so a decision revised three times in the window counts as one. */
