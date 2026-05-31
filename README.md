@@ -2,162 +2,183 @@
 
 # Mneme
 
-**An automatic decision archive for teams that already chat with AI.**
+**The decision audit trail for autonomous AI agents.**
 
-Every choice your team makes in a conversation gets captured automatically. When you revise it three weeks later, Mneme flags the revision *in the chat itself* — Originally → Now → Why — without you opening a panel. Six months in, your team has an institutional record nothing else can replicate.
+Every agent decision logged. Every contradiction flagged. Every policy violation caught — synchronously, at decision time, with a tamper-evident export ready for your regulator.
 
-[Open a workspace →](https://github.com/Hanishsaini/Mneme)
+[Open a workspace →](https://github.com/Hanishsaini/Mneme) · [SDK quickstart →](#sdk-quickstart)
 
 </div>
 
 ---
 
-## Why this exists
+## The problem
 
-Institutional forgetting is a documented organizational tax. Teams relitigate decisions they already made. New hires re-ask questions that were answered last quarter. A reversal in April quietly reappears in June with no record of why anyone moved off the original. Boards, McKinsey, and product-team writeups have all flagged this as expensive and chronic ([Advisorpedia](https://www.advisorpedia.com/viewpoints/institutional-forgetting-and-the-failure-of-corporate-memory/), [Medium: Decision Traces](https://medium.com/@blue___gene/decision-traces-the-architecture-of-organizational-memory-0865a458b847)).
+In 2026, autonomous AI agents are making decisions inside companies that humans never see:
 
-Most teams treat it as gravity. Mneme treats it as solvable.
+- An agent updates a product price. Three days later it changes the same price again — violating the team's "no more than one pricing change per week" policy. Nobody notices until the quarterly review.
+- An agent approves a healthcare recommendation that contradicts a clinical guideline a different agent committed to six weeks earlier. Both decisions are logged in separate JSON traces. Neither agent knows about the other.
+- A regulator asks for the decision trail behind a denied loan application. The team hands over LangChain trace files. The regulator asks who authenticated, what context the agent saw, and whether anything has been altered since. There are no answers.
 
-## What you actually see when you use it
+The Colorado AI Act takes effect **June 2026**. HIPAA, FINRA, SOC2 already require what agent frameworks don't produce: durable, queryable, tamper-evident logs of autonomous decisions with policy enforcement built in.
 
-Most "AI memory" products store stuff in the background. You never notice it working. **Mneme makes the memory layer visible at the moment it fires** — and that's the whole product wedge.
+**That gap is what Mneme fills.**
 
-**Mid-conversation, right after the AI replies:**
+## The three primitives
 
-> 📌 **Captured** · 1 decision, 1 question
->
-> *Click to expand and see exactly what landed.*
+| Primitive | What it does |
+| --- | --- |
+| **Agent Decision Log** | Every agent action is an event. Mneme captures *what* the agent decided, *what context* it saw, *what tool* it called, and stores a chained `content_hash` so external auditors can verify nothing's been altered after the fact. |
+| **Supersession Detection** | When a new decision lands, Mneme runs it against past decisions in the workspace using hybrid retrieval (pgvector cosine + Postgres BM25, fused via RRF). If it contradicts or revises a prior decision, the supersession link fires — amber callout *in the audit timeline, at the moment it happens*. |
+| **Policy Rules Engine** | Workspaces define rules in plain English: *"Never approve transactions over $10,000 without human review."* Every incoming decision runs against every active rule. Violations are flagged synchronously, severity-tagged, and surfaced to the agent on the SDK response so it can react in-loop. |
 
-A quiet pill confirms the layer just did something. No panel-opening required.
+## SDK quickstart
 
-**When the team revises an earlier decision:**
+Drop the SDK into any LangChain, CrewAI, AutoGen, or hand-rolled agent. Three calls.
 
-> ⚠ **Heads up — this revises an earlier decision**
->
-> **Originally** ~~We'll use WebSockets for real-time presence + canvas sync.~~
->
->          ↓
->
-> **Now** SSE over async generator for AI streaming; presence + canvas deferred until they leave the v0 backlog.
->
-> **Why** Socket-server complexity didn't earn its keep for a v0 surface we don't ship to users yet.
+```typescript
+import { MnemeClient } from "@mneme/sdk";
 
-The amber callout appears directly under the AI message that triggered the revision. The team sees its own thinking *evolve in real time*. No other AI tool does this.
+const client = new MnemeClient({
+  workspaceId: "ws_abc123",
+  apiKey: process.env.MNEME_API_KEY!,
+  baseUrl: "https://your-mneme.app",
+});
 
-## Why now
+// Open a run
+const runId = await client.startRun("pricing-agent", "v1.2.0");
 
-The space is funded and the market is moving. But the funded comparables leave Mneme's lane wide open:
+// Log every decision
+const result = await client.logDecision(runId, {
+  decision_type: "PRICING_UPDATE",
+  decision_content: "Set product SKU-401 price to $129.99",
+  context_used: { current_price: 119.99, competitor: 124.99 },
+  tool_called: "stripe.products.update",
+  tool_output: { id: "prod_xyz", updated: true },
+});
 
-| Player                     | What they raised                                                                                                                     | What they ship                                                                                |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| **mem0**                   | **$24M Series A** (Oct 2025) · 41k GitHub stars · sole memory provider for AWS Agent SDK ([TechCrunch](https://techcrunch.com/2025/10/28/mem0-raises-24m-from-yc-peak-xv-and-basis-set-to-build-the-memory-layer-for-ai-apps/)) | Developer SDK — you build the surface yourself                                                |
-| **supermemory**            | $2.6M from Google + Cloudflare execs (Oct 2025) ([TechCrunch](https://techcrunch.com/2025/10/06/a-19-year-old-nabs-backing-from-google-execs-for-his-ai-memory-startup-supermemory/))                                                 | Developer SDK — same shape, smaller team                                                      |
-| **ChatGPT Teams**          | Project Memory shipped Apr 2025 ([OpenAI](https://openai.com/index/memory-and-new-controls-for-chatgpt/))                            | Single-project context; no cross-project decision log, no revision visibility                 |
-| **Mneme** *(this project)* | —                                                                                                                                    | **Full product** with the supersession graph as a first-class UI, surfaced *during* the chat |
+// React in-loop — the response carries supersession + violation arrays
+if (result.violations.length > 0) {
+  for (const v of result.violations) {
+    console.warn(`Policy violation [${v.severity}]: ${v.explanation}`);
+    // Abort, escalate, or revert
+  }
+}
+if (result.supersessions.length > 0) {
+  console.info("This decision revised an earlier one — review the audit.");
+}
 
-Every funded comparable is a developer SDK or single-project context. **The end-user product where the supersession graph is a first-class UI is empty space.** That's the defensible lane.
+// Close the run
+await client.endRun(runId, "COMPLETED");
+```
 
-## What no one else exposes
+The SDK explicitly does **not** retry — decision logging is too important to risk silent double-writes. The caller decides retry semantics.
 
-|                       | What they miss                                            | What Mneme shows                                                              |
-| --------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| ChatGPT / Claude      | Forgets the moment you close the tab. No team layer.      | Persistent, workspace-scoped, semantic — across every conversation, forever   |
-| ChatGPT Projects      | Project-scoped context only. No revision visibility.      | Cross-conversation decision archive with visible Originally → Now → Why       |
-| Notion AI             | Static docs nobody comes back to read.                    | Decisions surface themselves the next time the question comes up              |
-| Slack search          | Keyword-only, over unstructured chatter.                  | Semantic + keyword fusion, over the structured decisions your team made       |
-| mem0 / supermemory    | Developer SDKs — you build the surface.                   | Full product with the supersession graph wired straight into the chat UI      |
+## Competitive landscape
 
-After six months of use, your team has a decision graph no other team can replicate. **That's the moat.** It compounds the longer you use it.
+| Player | What they raised | What they ship | What they miss |
+| --- | --- | --- | --- |
+| **mem0** | **$24M Series A** (Oct 2025) · 41k stars · AWS Agent SDK ([TechCrunch](https://techcrunch.com/2025/10/28/mem0-raises-24m-from-yc-peak-xv-and-basis-set-to-build-the-memory-layer-for-ai-apps/)) | Developer SDK for *agent memory* | No supersession surface · no policy engine · no compliance export |
+| **supermemory** | $2.6M from Google + Cloudflare execs ([TechCrunch](https://techcrunch.com/2025/10/06/a-19-year-old-nabs-backing-from-google-execs-for-his-ai-memory-startup-supermemory/)) | Developer SDK for *agent memory* | Same |
+| **LangSmith / Langfuse** | LangChain ecosystem | Traces + observability for debugging | Traces ≠ audit; no synchronous policy enforcement; no tamper evidence |
+| **Mneme** | — | **Full audit product** with supersession graph as first-class UI, plain-English policy enforcement, and a JSON export designed for compliance officers | — |
 
-## How it works
+**The empty lane:** every funded competitor is debugging infrastructure for engineers. Nobody ships the *compliance product* the buyer (legal, risk, regulatory) actually needs to hand to a regulator.
 
-Four engineering layers, each visible inside the product:
+## The regulation context
 
-| Stage         | What happens                                                                                                                                                                                                                       | The tech                                                                       |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| **Capture**   | An extractor reads every user → assistant exchange and writes structured items: decisions, open questions, action items, durable context. Fire-and-forget. Never blocks the response.                                              | mem0-style operation emitter (`ADD` / `UPDATE` / `DELETE` / `NONE`) over an LLM |
-| **Connect**   | Every message gets embedded into a workspace-scoped vector + keyword index. Retrieval fuses pgvector cosine search with Postgres BM25 via reciprocal rank fusion — proper-noun precision and conceptual recall, in one CTE.        | `pgvector` 768d (Gemini) · `ts_rank_cd` BM25 · RRF (k=60)                       |
-| **Evolve**    | When the team revises a past decision, Mneme detects the supersession, links the new row to the old one in a directed graph, and writes the LLM-generated rationale for the change. History is preserved, not overwritten.        | Self-referencing FK (`supersededById`) · soft-resolve on reversal              |
-| **Surface**   | The inline "Captured" pill + amber "Heads up — this revises X" callout fire under every completed AI message. The dossier panel shows the full supersession graph in the Memory + History tabs.                                    | Message-scoped item query · 1.5/4/8s polling cadence                            |
-
-## The four commits that built the moat
-
-1. **[`41600bc`](https://github.com/Hanishsaini/Mneme/commit/41600bc) — Operation-emitter extraction.** Three-stage pipeline per AI turn: extract candidate facts → vector-search workspace memory for neighbors → reconcile via a second LLM call emitting `ADD` / `UPDATE` / `DELETE` / `NONE` ops. Hallucinated `targetId`s are dropped via a `validTargetIds` set.
-
-2. **[`7b5b787`](https://github.com/Hanishsaini/Mneme/commit/7b5b787) — Hybrid retrieval (RRF).** Vector cosine and Postgres BM25 merged via reciprocal rank fusion (k=60) inside a single CTE. `FULL OUTER JOIN` over two ranked pools, sum of `1/(k+rank)` per source. One round-trip.
-
-3. **[`847bad5`](https://github.com/Hanishsaini/Mneme/commit/847bad5) — Supersession graph as product surface.** `/memory/revisited` endpoint joins each head row to its immediate predecessor; the panel renders Originally → Now → Why. A dedicated History tab expands the full chain inline.
-
-4. **[`933bd7b`](https://github.com/Hanishsaini/Mneme/commit/933bd7b) — Memory layer visible in chat.** Inline "Captured" pill + amber revises callout fire under every completed AI message. The moat made visible in the moment it happens — not buried in a panel.
-
-Together: **capture, connect, evolve, surface.** The data plus the moment it shows up to the user.
+| Regulation | Effective | What it requires | What Mneme produces |
+| --- | --- | --- | --- |
+| **Colorado AI Act** | June 2026 | Reasonable care + decision records for "consequential decisions" by AI systems | Every decision logged with context, tool calls, hashes |
+| **HIPAA** | In force | Audit logs of every system access + decision affecting PHI | Same — with workspace-scoped retention controls |
+| **FINRA Rule 3110** | In force | Supervision systems for automated trading + advisory decisions | Synchronous policy violations + tamper-evident exports |
+| **SOC2 Type II** | Continuous | Logging, monitoring, and change-management evidence | The full audit-export JSON satisfies the AI-system evidence ask |
 
 ## Architecture
 
 ```
 ┌────────────────────┐   ┌────────────────────────────────────────────┐
-│  Next.js 15 App    │   │  Engineering surface                       │
-│  (Server Components│   │                                            │
-│   + SSE streaming) │   │  • SSE via ReadableStream + async gen      │
-│                    │──▶│  • NextAuth v4 (JWT) + bcrypt 12           │
-│                    │   │  • Zod-validated route handlers            │
+│  Next.js 15 App    │   │  Public surfaces                           │
+│  (App Router +     │   │                                            │
+│   Server Components│   │  • /api/agent-runs/:id/decisions  (ingest) │
+│   + SSE chat)      │──▶│  • /api/workspaces/:id/audit-export        │
+│                    │   │  • SDK: MnemeClient (3 calls)              │
 └────────┬───────────┘   └──────────────────┬─────────────────────────┘
          │                                  │
          ▼                                  ▼
 ┌────────────────────┐            ┌────────────────────────────────────┐
-│  Postgres          │            │  Upstash Redis                     │
+│  Postgres          │            │  Engines                           │
 │                    │            │                                    │
-│  • pgvector 768d   │            │  • Per-conversation locks          │
-│    + HNSW index    │            │  • AI rate limits                  │
-│  • tsvector +      │            │  • Login lockout (8 try / 15 min)  │
-│    GIN index       │            │  • Run-abort flags                 │
-│  • Supersession FK │            │  • Sequence allocators             │
+│  • AgentRun        │            │  • Supersession: hybrid RRF +      │
+│  • DecisionEvent   │            │    LLM operation emitter           │
+│    + pgvector 768d │            │  • PolicyEngine: cosine pre-filter │
+│    + tsvector GIN  │            │    + LLM violation check           │
+│    + content_hash  │            │  • Tamper evidence: chained sha256 │
+│    + supersededBy  │            │    over (content || context        │
+│  • PolicyRule      │            │    || previousHash)                │
+│  • PolicyViolation │            │                                    │
 └────────────────────┘            └────────────────────────────────────┘
-         ▲
-         │  Provider abstraction with auto-fallback
-         │
-┌────────┴───────────────────────────────────────────────────────────┐
-│  Groq → Gemini → OpenAI → mock  (chat + extraction + reconcile)    │
-│  Gemini gemini-embedding-001 (768d via outputDimensionality)       │
+                                                  ▲
+                                                  │
+┌─────────────────────────────────────────────────┴──────────────────┐
+│  Provider abstraction: Groq · Gemini · OpenAI · mock               │
+│  Gemini gemini-embedding-001 (768d) for embeddings                 │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
+## Tamper evidence
+
+Each `AgentDecisionEvent` carries:
+
+```
+contentHash  = sha256(decisionContent || canonical-JSON(contextUsed) || previousHash)
+previousHash = the contentHash of the immediately prior decision in the same run
+```
+
+The export's top-level `exportHash` is `sha256(every decision's contentHash, in chronological order)`. To verify integrity, an external auditor:
+
+1. Reads the JSON export.
+2. Re-derives each decision's `contentHash` from `(content, context, previousHash)`.
+3. Confirms every derived hash matches every stored hash.
+4. Concatenates the verified hashes and confirms `exportHash` matches.
+
+Any modification anywhere — change one byte of `decisionContent`, swap two context fields, delete a row — breaks every subsequent hash in the chain. The verification is `O(n)` with no special tooling: a 100-line Python script does it.
+
 ## Stack
 
-| Layer             | Tech                                                                                          |
-| ----------------- | --------------------------------------------------------------------------------------------- |
-| Framework         | Next.js 15.5 (App Router, React 19, Node runtime)                                             |
-| Auth              | NextAuth v4 (JWT) · Credentials + Google + GitHub · bcryptjs cost 12 · NIST SP 800-63B policy |
-| DB                | Postgres 16 · Prisma 6 · pgvector + HNSW · tsvector + GIN                                     |
-| Cache / coord     | Upstash Redis (ioredis) — locks, rate limits, sequences, run-abort flags                      |
-| AI                | Provider abstraction (Groq · Gemini · OpenAI · mock) · Gemini for embeddings (768d)           |
-| Streaming         | SSE via `ReadableStream` + async generator; client disconnect aborts the run cleanly          |
-| Styling           | Tailwind · shadcn/ui · Inter / Newsreader serif / JetBrains Mono                              |
-| Deploy            | Vercel (web) · Neon or Supabase (Postgres) · Upstash (Redis)                                  |
+| Layer | Tech |
+| --- | --- |
+| Framework | Next.js 15.5 (App Router, React 19, Node runtime) |
+| Auth | NextAuth v4 (JWT) · Credentials + Google + GitHub · bcryptjs cost 12 · NIST SP 800-63B password policy |
+| DB | Postgres 16 · Prisma 6 · pgvector + HNSW · tsvector + GIN |
+| Cache / coord | Upstash Redis (ioredis) — rate limits, lockouts, sequences |
+| AI | Provider abstraction (Groq · Gemini · OpenAI · mock) · Gemini for embeddings (768d) |
+| Styling | Tailwind · shadcn/ui · Inter / Newsreader serif / JetBrains Mono |
+| Deploy | Vercel (web) · Neon or Supabase (Postgres) · Upstash (Redis) |
 
 ## Local development
 
 ```bash
 pnpm install
-cp .env.local.example .env.local      # fill in DATABASE_URL, REDIS_URL, etc.
+cp .env.local.example .env.local      # fill in DATABASE_URL, REDIS_URL, NEXTAUTH_SECRET
 pnpm db:generate
 pnpm db:migrate
 pnpm dev
 ```
 
-Required env (the rest carry safe defaults):
+Required env in production:
 
 ```bash
 DATABASE_URL=postgres://...           # pgvector + tsvector enabled
-REDIS_URL=rediss://...                # Upstash works out of the box
-NEXTAUTH_SECRET=...                   # change from dev default in prod
+REDIS_URL=rediss://...
+NEXTAUTH_SECRET=...                   # 32+ chars; env.ts FAILS LOUDLY if absent in prod
 ```
 
 Optional AI keys — Mneme falls back to a mock provider if none are set:
 
 ```bash
-GROQ_API_KEY=...
-GEMINI_API_KEY=...                    # required for embeddings; falls back to no-op
+GROQ_API_KEY=...                      # fastest for the synchronous LLM calls
+GEMINI_API_KEY=...                    # required for embeddings (768d)
 OPENAI_API_KEY=...
 ```
 
@@ -171,58 +192,81 @@ pnpm db:migrate       # apply pending migrations
 pnpm db:reset         # nuke + reseed (dev only)
 ```
 
+## The demo
+
+A new user opens a workspace and lands on `/audit` to find:
+
+- **One agent run** — `example-pricing-agent v0.1.0` — with six backdated decisions
+- **An amber "Supersedes prior" badge** on decision #3 (it replaced decision #1 — competitor exited, pricing recovered)
+- **A red HIGH-severity policy violation** on decision #5 (pricing changed twice within 7 days, violating the seeded rule)
+- **One active policy rule** in the Policies tab
+
+The supersession + violation are *already there* before the user has logged a single decision of their own. The product sells itself in 30 seconds.
+
 ## Project layout
 
 ```
 src/
-  app/                            # Next.js App Router routes
+  app/
+    (workspace)/w/[workspaceId]/
+      page.tsx                       # Chat surface
+      audit/page.tsx                 # The pivot's first-class route
     api/
-      messages/[messageId]/captured/  # The inline-capture endpoint
-      workspaces/[id]/memory/         # revisited, stale, items, ask
+      agent-runs/[runId]/
+        decisions/                   # POST ingestion · GET timeline
+        end/                         # POST close-run
+      workspaces/[id]/
+        agent-runs/                  # POST + GET runs
+        policy-rules/                # POST + GET rules
+        audit-export/                # GET full JSON export
+      policy-rules/[ruleId]/         # PATCH toggle
   features/
-    ai/                           # Provider abstraction, SSE orchestrator
-    memory/                       # The moat
+    agent-audit/
       server/
-        extractor.service.ts        # Operation-emitter pipeline (mem0-style)
-        hybrid-search.ts            # RRF over pgvector + BM25
-        memory-items.repository.ts  # Supersession graph + revisited queries
+        agent-runs.repository.ts
+        decision-events.repository.ts
+        decision-hybrid-search.ts    # RRF over decision events
+        decision-ingestion.service.ts # The orchestrator
+        supersession-detector.service.ts
+        policy-engine.service.ts
+        policy-rules.repository.ts
+        audit-export.service.ts
+        seed.service.ts              # Demo seed
       components/
-        memory-panel.tsx            # Dossier surface (Ask / Memory / Review / History)
-    conversation/
-      components/
-        captured-surface.tsx        # Inline pill + revises callout
-        message-bubble.tsx          # Mounts CapturedSurface per completed AI message
-    marketing/                    # Public landing
-    auth/                         # Sign in / sign up, password policy
-    workspace/                    # Shell, sidebar, invites
+        audit-shell.tsx              # 4-tab UI
+    memory/                          # Personal chat memory — coexists
+    ai/                              # Provider abstraction
+    conversation/                    # Chat (the original surface)
   lib/
-    api/handler.ts                # withHandler wrapper (auth + Zod + error → JSON)
-    auth/                         # NextAuth config, password hash + policy, lockout
-    redis/                        # Locks, rate limits, sequences, run-abort
-    db/                           # Prisma client + DTO mappers
-  config/                         # Env validation (Zod), tunables
+    api/handler.ts                   # Auth + Zod + error → JSON wrapper
+    auth/                            # NextAuth + bcrypt + lockout
+    db/                              # Prisma client + DTO mappers
+sdk/
+  mneme.ts                           # The TypeScript SDK stub
 prisma/
-  schema.prisma                   # MemoryItem, Embedding, supersession FK
-  migrations/                     # Linear, no squashes
-packages/
-  shared/                         # Transport-safe DTOs (consumed by client + server)
+  schema.prisma                      # AgentRun, AgentDecisionEvent,
+                                     # PolicyRule, PolicyViolation
+                                     # + existing Memory + chat tables
+  migrations/                        # Linear, no squashes
 ```
 
 ## Security posture
 
-- **Passwords**: bcrypt cost 12, 12-char minimum, common-password dictionary check, email-substring rejection. NIST SP 800-63B style — length over complexity.
-- **Lockout**: 8 attempts per 15-minute window per email → 30-minute lockout. TTL extends at trip time so attackers can't game window-end timing.
-- **No enumeration leak**: every auth failure surfaces "Invalid email or password" — wrong password, no account, locked out, OAuth-only all look identical.
-- **Auth on every API route**: `withHandler` wraps every endpoint; session resolution + Zod body validation are non-optional.
-- **Workspace isolation**: every read/write asserts `requireMembership` against the row's workspace before returning data.
+- **Passwords**: bcrypt cost 12, 12-char minimum, common-password dictionary check.
+- **Lockout**: 8 attempts per 15-minute window per email → 30-minute lockout. TTL extends at trip.
+- **No enumeration leak**: every auth failure surfaces the same generic message.
+- **Prod-guarded secrets**: `NEXTAUTH_SECRET` requires 32+ characters when `NODE_ENV=production`; the dev fallback (`dev-only-…`) is rejected. Same pattern for other env entries.
+- **OAuth account linking off**: `allowDangerousEmailAccountLinking: false` on both Google and GitHub providers.
+- **Auth on every route**: `withHandler` wraps every endpoint; member-scoped where applicable.
+- **Workspace isolation**: every read/write asserts `requireMembership` against the row's workspace.
 
 ## Roadmap
 
-- **Inline citations when retrieval fires** — "Based on what your team decided Mar 12 [↗]…" so the AI visibly gets smarter the longer the team uses it.
-- **Seeded demo workspace** — experience the supersession story in your first 60 seconds, before you generate any data of your own.
-- **Public retrieval eval** — quantify the lift of RRF over cosine-only / BM25-only on a published set.
-- **Memory-as-context SDK** — LangChain / LlamaIndex adapter so external AI agents can read the decision archive.
-- **Team analytics** — "your team revisits decisions 2.4× faster than typical."
+- **Bearer-token API keys** for unattended agent use (currently routes use session-cookie auth)
+- **Slack + Linear connectors** so policy violations land in the channels humans actually watch
+- **LangSmith / Langfuse import** to ingest existing trace archives into Mneme retroactively
+- **Per-rule severity overrides** — let the policy author specify severity instead of having the LLM choose
+- **Multi-tenant compliance officer view** for legal / risk teams managing multiple workspaces
 
 ## License
 
@@ -232,7 +276,7 @@ MIT.
 
 <div align="center">
 
-Built with care. Designed to compound.
+Built for the moment regulators ask, *"Show us the trail."*
 
 [github.com/Hanishsaini/Mneme](https://github.com/Hanishsaini/Mneme)
 
