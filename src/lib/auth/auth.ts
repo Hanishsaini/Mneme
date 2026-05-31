@@ -35,17 +35,18 @@ function buildProviders(): NextAuthOptions["providers"] {
   const env = getServerEnv();
   const providers: NextAuthOptions["providers"] = [];
 
-  // DEMO MODE: `allowDangerousEmailAccountLinking: true` is temporarily enabled
-  // so the demo recording flow works (the user hit OAuthAccountNotLinked when
-  // attempting to switch providers, and silent failures in the OAuth callback
-  // were leaving orphan User rows). MUST be flipped back to false before any
-  // public sharing — see [[project-deferred-credential-rotation]] memory.
+  // Account-linking deliberately OFF. If a user signs up with email+password
+  // and later attempts OAuth with the same email, NextAuth returns
+  // OAuthAccountNotLinked instead of silently merging — the safer default
+  // against account-takeover via OAuth provider compromise. The deferred
+  // "claim existing account via verified OAuth" flow will handle the merge
+  // intentionally rather than relying on this flag.
   if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
     providers.push(
       GoogleProvider({
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,
-        allowDangerousEmailAccountLinking: true,
+        allowDangerousEmailAccountLinking: false,
       }),
     );
   }
@@ -54,7 +55,7 @@ function buildProviders(): NextAuthOptions["providers"] {
       GitHubProvider({
         clientId: env.GITHUB_ID,
         clientSecret: env.GITHUB_SECRET,
-        allowDangerousEmailAccountLinking: true,
+        allowDangerousEmailAccountLinking: false,
       }),
     );
   }
