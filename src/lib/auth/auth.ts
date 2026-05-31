@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getServerEnv } from "@/config/env";
 import { CURSOR_COLORS } from "@/config/constants";
 import { verifyPassword } from "@/lib/auth/password";
+import { seedDemoAgentAudit } from "@/features/agent-audit/server/seed.service";
 import {
   clearLoginAttempts,
   recordLoginAttempt,
@@ -157,7 +158,7 @@ function buildAuthOptions(): NextAuthOptions {
           ? `${firstName}'s workspace`
           : "Personal workspace";
 
-        await prisma.workspace.create({
+        const workspace = await prisma.workspace.create({
           data: {
             name: workspaceName,
             ownerId: user.id,
@@ -171,7 +172,9 @@ function buildAuthOptions(): NextAuthOptions {
             conversations: { create: { title: "New conversation" } },
             canvases: { create: { type: "NOTES", snapshot: { blocks: [] } } },
           },
+          select: { id: true },
         });
+        void seedDemoAgentAudit(workspace.id);
       },
     },
   };

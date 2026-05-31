@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { Errors } from "@/lib/api/errors";
 import { hashPassword, validatePasswordStrength } from "@/lib/auth/password";
 import { CURSOR_COLORS } from "@/config/constants";
+import { seedDemoAgentAudit } from "@/features/agent-audit/server/seed.service";
 
 /**
  * Registers a new email+password user and provisions their personal
@@ -52,7 +53,7 @@ export async function registerUser(input: RegisterInput) {
 
   // One transaction: User + Workspace + Membership + Conversation + Canvas.
   // Mirrors the OAuth createUser event but inside an atomic boundary.
-  const user = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const u = await tx.user.create({
       data: {
         email,
@@ -60,7 +61,7 @@ export async function registerUser(input: RegisterInput) {
         passwordHash,
       },
     });
-    await tx.workspace.create({
+    const w = await tx.workspace.create({
       data: {
         name: workspaceName,
         ownerId: u.id,
@@ -74,9 +75,14 @@ export async function registerUser(input: RegisterInput) {
         conversations: { create: { title: "New conversation" } },
         canvases: { create: { type: "NOTES", snapshot: { blocks: [] } } },
       },
+      select: { id: true },
     });
-    return u;
+    return { user: u, workspaceId: w.id };
   });
 
-  return { id: user.id, email: user.email };
+  // Fire-and-forget agent-audit seed so a brand-new user lands in /audit
+  // and sees a populated supersession + violation immediately.
+  void seedDemoAgentAudit(result.workspaceId);
+
+  return { id: result.user.id, email: result.user.email };
 }
