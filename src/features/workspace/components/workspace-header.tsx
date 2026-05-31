@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { BrainCircuit, Menu, Search } from "lucide-react";
+import Link from "next/link";
+import { BrainCircuit, FileCheck2, Menu, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { AccountMenu } from "@/features/account/components/account-menu";
@@ -46,6 +47,19 @@ export function WorkspaceHeader({
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
+        {workspace && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hidden gap-1.5 text-muted-foreground hover:text-foreground sm:flex"
+            asChild
+          >
+            <Link href={`/w/${workspace.id}/audit`}>
+              <FileCheck2 className="h-3.5 w-3.5" />
+              <span className="text-xs">Agent audit</span>
+            </Link>
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
