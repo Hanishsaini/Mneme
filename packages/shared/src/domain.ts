@@ -158,6 +158,113 @@ export interface MessageCapturedDTO {
   revised: RevisitedDecisionDTO[];
 }
 
+/* ─── Agent audit ────────────────────────────────────────────────── */
+
+export type AgentRunStatus = "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+export type PolicyViolationSeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export interface AgentRunDTO {
+  id: string;
+  workspaceId: string;
+  agentName: string;
+  agentVersion: string;
+  status: AgentRunStatus;
+  metadata: Record<string, unknown>;
+  startedAt: string;
+  endedAt: string | null;
+  /** Populated when the run is listed via the runs endpoint — aggregate
+   *  counts for the row badges (decisions, violations). */
+  decisionCount?: number;
+  violationCount?: number;
+}
+
+export interface AgentDecisionEventDTO {
+  id: string;
+  runId: string;
+  workspaceId: string;
+  decisionType: string;
+  decisionContent: string;
+  contextUsed: Record<string, unknown>;
+  toolCalled: string | null;
+  toolOutput: Record<string, unknown> | null;
+  contentHash: string;
+  previousHash: string | null;
+  /** When this decision replaced an earlier one, points at the prior
+   *  decision's id. The "this revises X" amber callout fires on rows
+   *  where `supersededById` was set DURING ingestion of the new event
+   *  (a NEW event whose ingestion linked to a PRIOR one). */
+  supersededById: string | null;
+  supersededReason: string | null;
+  decidedAt: string;
+  createdAt: string;
+}
+
+export interface PolicyRuleDTO {
+  id: string;
+  workspaceId: string;
+  ruleText: string;
+  isActive: boolean;
+  createdById: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Count of violations this rule has caught (lifetime). Populated when
+   *  the rule is listed via the rules endpoint. */
+  violationCount?: number;
+}
+
+export interface PolicyViolationDTO {
+  id: string;
+  decisionEventId: string;
+  policyRuleId: string;
+  /** The matched rule's text, denormalized for display. */
+  policyRuleText?: string;
+  violationExplanation: string;
+  severity: PolicyViolationSeverity;
+  detectedAt: string;
+  resolvedAt: string | null;
+  resolvedById: string | null;
+  resolverNote: string | null;
+}
+
+/** Returned by POST /agent-runs/:runId/decisions — what the SDK reads
+ *  immediately after logging a decision. The SDK exposes these arrays
+ *  so an agent can react in-loop ("policy violation detected — abort"). */
+export interface DecisionIngestionResultDTO {
+  decision: AgentDecisionEventDTO;
+  /** If this decision superseded a prior one, the prior decision id and
+   *  the LLM-generated reason. Empty array if no supersession fired. */
+  supersessions: Array<{
+    supersededId: string;
+    reason: string;
+  }>;
+  /** Every policy rule this decision violated, with severity + LLM
+   *  explanation. Empty array if no violations. */
+  violations: Array<{
+    policyRuleId: string;
+    severity: PolicyViolationSeverity;
+    explanation: string;
+  }>;
+}
+
+/** Full audit export — what GET /audit-export returns. Designed to be
+ *  handed to a compliance officer / regulator. Includes everything needed
+ *  to re-derive the content_hash chain externally and verify no row was
+ *  altered after the fact. */
+export interface AuditExportDTO {
+  workspace: { id: string; name: string };
+  generatedAt: string;
+  /** sha256 of the canonical serialization of every decision's
+   *  contentHash, joined with newlines. Verifies the export wasn't
+   *  modified between download and audit. */
+  exportHash: string;
+  runs: Array<AgentRunDTO & {
+    decisions: Array<AgentDecisionEventDTO & {
+      violations: PolicyViolationDTO[];
+    }>;
+  }>;
+  policyRules: PolicyRuleDTO[];
+}
+
 export interface PresenceUser {
   userId: string;
   name: string | null;

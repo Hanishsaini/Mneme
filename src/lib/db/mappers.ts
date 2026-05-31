@@ -8,10 +8,20 @@ import type {
   User,
 } from "@prisma/client";
 import type {
+  AgentDecisionEvent,
+  AgentRun,
+  PolicyRule,
+  PolicyViolation,
+} from "@prisma/client";
+import type {
+  AgentDecisionEventDTO,
+  AgentRunDTO,
   CanvasDocumentDTO,
   ConversationDTO,
   MemoryItemDTO,
   MessageDTO,
+  PolicyRuleDTO,
+  PolicyViolationDTO,
   RevisitedDecisionDTO,
   WorkspaceDTO,
   WorkspaceMemberDTO,
@@ -134,6 +144,85 @@ export function toRevisitedDecisionDTO(
       reason: prior.supersededReason,
       createdAt: prior.createdAt.toISOString(),
     },
+  };
+}
+
+/* ─── Agent audit mappers ─────────────────────────────────────────── */
+
+type AgentRunWithCounts = AgentRun & {
+  _count?: { decisions?: number };
+};
+
+export function toAgentRunDTO(
+  r: AgentRunWithCounts,
+  violationCount?: number,
+): AgentRunDTO {
+  return {
+    id: r.id,
+    workspaceId: r.workspaceId,
+    agentName: r.agentName,
+    agentVersion: r.agentVersion,
+    status: r.status,
+    metadata: (r.metadata as Record<string, unknown>) ?? {},
+    startedAt: r.startedAt.toISOString(),
+    endedAt: r.endedAt?.toISOString() ?? null,
+    decisionCount: r._count?.decisions,
+    violationCount,
+  };
+}
+
+export function toAgentDecisionEventDTO(d: AgentDecisionEvent): AgentDecisionEventDTO {
+  return {
+    id: d.id,
+    runId: d.runId,
+    workspaceId: d.workspaceId,
+    decisionType: d.decisionType,
+    decisionContent: d.decisionContent,
+    contextUsed: (d.contextUsed as Record<string, unknown>) ?? {},
+    toolCalled: d.toolCalled,
+    toolOutput: (d.toolOutput as Record<string, unknown> | null) ?? null,
+    contentHash: d.contentHash,
+    previousHash: d.previousHash,
+    supersededById: d.supersededById,
+    supersededReason: d.supersededReason,
+    decidedAt: d.decidedAt.toISOString(),
+    createdAt: d.createdAt.toISOString(),
+  };
+}
+
+type PolicyRuleWithCounts = PolicyRule & {
+  _count?: { violations?: number };
+};
+
+export function toPolicyRuleDTO(p: PolicyRuleWithCounts): PolicyRuleDTO {
+  return {
+    id: p.id,
+    workspaceId: p.workspaceId,
+    ruleText: p.ruleText,
+    isActive: p.isActive,
+    createdById: p.createdById,
+    createdAt: p.createdAt.toISOString(),
+    updatedAt: p.updatedAt.toISOString(),
+    violationCount: p._count?.violations,
+  };
+}
+
+type PolicyViolationWithRule = PolicyViolation & {
+  policyRule?: { ruleText: string };
+};
+
+export function toPolicyViolationDTO(v: PolicyViolationWithRule): PolicyViolationDTO {
+  return {
+    id: v.id,
+    decisionEventId: v.decisionEventId,
+    policyRuleId: v.policyRuleId,
+    policyRuleText: v.policyRule?.ruleText,
+    violationExplanation: v.violationExplanation,
+    severity: v.severity,
+    detectedAt: v.detectedAt.toISOString(),
+    resolvedAt: v.resolvedAt?.toISOString() ?? null,
+    resolvedById: v.resolvedById,
+    resolverNote: v.resolverNote,
   };
 }
 
