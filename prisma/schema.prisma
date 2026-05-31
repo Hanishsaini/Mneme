@@ -53,6 +53,29 @@ enum PresenceStatus {
   OFFLINE
 }
 
+// ─── Agent audit primitives (the pivot) ──────────────────────────────────
+//
+// Mneme is now the decision audit trail for autonomous AI agents. These
+// four models — runs, decision events, policy rules, policy violations —
+// are the foundation. The supersession graph that used to track human
+// thinking (MemoryItem.supersededById) is replicated here over agent
+// decisions: a new decision that semantically contradicts a past one
+// links forward via AgentDecisionEvent.supersededById.
+
+enum AgentRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum PolicyViolationSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 // ─── Identity ─────────────────────────────────────────────────────────────
 
 /// Standard NextAuth-compatible User model. `image` + `emailVerified` are
@@ -85,6 +108,9 @@ model User {
   invitesUsed     WorkspaceInvite[] @relation("InvitesUsed")
   // Team memory back-refs
   // (no direct user→embedding link; embeddings are keyed by message)
+  // Agent audit back-refs
+  policyRulesCreated  PolicyRule[]      @relation("PolicyRulesCreated")
+  violationsResolved  PolicyViolation[] @relation("ViolationsResolved")
 }
 
 /// NextAuth OAuth account links. Standard adapter shape — do not rename
@@ -151,6 +177,10 @@ model Workspace {
   invites       WorkspaceInvite[]
   embeddings    Embedding[]
   memoryItems   MemoryItem[]
+  // Agent audit
+  agentRuns      AgentRun[]
+  agentDecisions AgentDecisionEvent[]
+  policyRules    PolicyRule[]
 
   @@index([ownerId])
 }
@@ -405,4 +435,126 @@ model PresenceState {
   @@unique([workspaceId, userId])
   @@index([workspaceId, status])
   @@index([userId])
+}
+
+// ─── Agent audit ─────────────────────────────────────────────────────────
+
+/// One run of an autonomous agent. SDK clients call POST /agent-runs to
+/// open a run, then stream individual decisions in via POST
+/// /agent-runs/:id/decisions, then close the run when done.
+///
+/// `metadata` is a free-form bag for SDK-supplied tags (LangChain trace
+/// id, CrewAI agent role, etc.) — never read by Mneme's logic.
+model AgentRun {
+  id           String         @id @default(cuid())
+  workspaceId  String
+  agentName    String
+  agentVersion String         @default("")
+  status       AgentRunStatus @default(RUNNING)
+  metadata     Json           @default("{}")
+  startedAt    DateTime       @default(now())
+  endedAt      DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  decisions AgentDecisionEvent[]
+
+  @@index([workspaceId, startedAt(sort: Desc)])
+  @@index([status])
+}
+
+/// A single agent decision event — the atomic unit of the audit trail.
+/// Carries the decision itself, the context the agent saw at decision
+/// time, the tool it called (if any), and tamper-evident chained content
+/// hashes that let an external auditor verify the export wasn't edited.
+///
+/// `embedding` is a pgvector(768) column (Gemini gemini-embedding-001 with
+/// outputDimensionality: 768 — matches Embedding + MemoryItem so we share
+/// one HNSW infra). `contentTsv` is a generated tsvector for the hybrid
+/// retrieval Mneme runs to detect supersession.
+///
+/// `contentHash` is sha256(decisionContent || JSON.stringify(contextUsed)
+/// || previousHash). `previousHash` is the contentHash of the immediately
+/// prior decision in the same run, or NULL for the first decision. Audit
+/// exports re-derive the chain — a deletion or modification anywhere
+/// breaks every subsequent hash.
+model AgentDecisionEvent {
+  id               String   @id @default(cuid())
+  runId            String
+  workspaceId      String
+  decisionType     String
+  decisionContent  String   @db.Text
+  contextUsed      Json     @default("{}")
+  toolCalled       String?
+  toolOutput       Json?
+  embedding        Unsupported("vector(768)")?
+  contentTsv       Unsupported("tsvector")?
+  contentHash      String
+  previousHash     String?
+  supersededById   String?
+  supersededReason String?  @db.Text
+  decidedAt        DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  run          AgentRun             @relation(fields: [runId], references: [id], onDelete: Cascade)
+  workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supersededBy AgentDecisionEvent?  @relation("AgentDecisionSupersession", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes   AgentDecisionEvent[] @relation("AgentDecisionSupersession")
+  violations   PolicyViolation[]
+
+  @@index([runId, decidedAt])
+  @@index([workspaceId, decidedAt(sort: Desc)])
+  @@index([workspaceId, decisionType])
+  @@index([supersededById])
+}
+
+/// A plain-English policy rule defined by the workspace. The ingestion
+/// pipeline runs every incoming decision against every active rule; a
+/// match writes a PolicyViolation row.
+///
+/// `ruleEmbedding` is a pgvector(768) of `ruleText` — we use cosine
+/// similarity as a coarse pre-filter before the LLM-based violation check
+/// (cheap to dismiss obviously-unrelated rules without LLM cost).
+model PolicyRule {
+  id            String                       @id @default(cuid())
+  workspaceId   String
+  ruleText      String                       @db.Text
+  ruleEmbedding Unsupported("vector(768)")?
+  isActive      Boolean                      @default(true)
+  createdById   String?
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+
+  workspace  Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy  User?             @relation("PolicyRulesCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  violations PolicyViolation[]
+
+  @@index([workspaceId, isActive])
+}
+
+/// One flagged violation — links a specific decision event to a specific
+/// policy rule it broke. `violationExplanation` is the LLM's short
+/// rationale (carried into the audit export). Resolution is optional;
+/// unresolved violations surface as red badges in the UI until a workspace
+/// member acknowledges them.
+model PolicyViolation {
+  id                   String                  @id @default(cuid())
+  decisionEventId      String
+  policyRuleId         String
+  violationExplanation String                  @db.Text
+  severity             PolicyViolationSeverity @default(MEDIUM)
+  detectedAt           DateTime                @default(now())
+  resolvedAt           DateTime?
+  resolvedById         String?
+  resolverNote         String?                 @db.Text
+
+  decisionEvent AgentDecisionEvent @relation(fields: [decisionEventId], references: [id], onDelete: Cascade)
+  policyRule    PolicyRule         @relation(fields: [policyRuleId], references: [id], onDelete: Cascade)
+  resolvedBy    User?              @relation("ViolationsResolved", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([decisionEventId])
+  @@index([policyRuleId])
+  @@index([severity, resolvedAt])
 }
