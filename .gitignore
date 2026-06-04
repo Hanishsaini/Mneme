@@ -28,3 +28,6 @@ prisma/dev.db
 .claude/
 .vscode/
 .idea/
+
+.vercel
+.env*.local

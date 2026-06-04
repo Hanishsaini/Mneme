@@ -7,26 +7,40 @@ import {
   ArrowLeft,
   ArrowRight,
   Bot,
+  Check,
   CheckCircle2,
   ChevronDown,
+  Copy,
   Download,
   FileCheck2,
   GitBranch,
+  KeyRound,
   Loader2,
   Plus,
   ScrollText,
   Shield,
   Terminal,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
   AgentDecisionEventDTO,
   AgentRunDTO,
+  ApiKeyDTO,
+  CreatedApiKeyDTO,
   PolicyRuleDTO,
   PolicyViolationDTO,
   PolicyViolationSeverity,
 } from "@workspace/shared";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
@@ -45,13 +59,14 @@ import { cn } from "@/lib/utils";
  * red strictly reserved for violations (the signal you can't miss).
  */
 
-type Tab = "RUNS" | "DECISIONS" | "POLICIES" | "EXPORT";
+type Tab = "RUNS" | "DECISIONS" | "POLICIES" | "EXPORT" | "KEYS";
 
 const TABS: Array<{ key: Tab; label: string; sublabel: string; icon: React.ComponentType<{ className?: string }> }> = [
   { key: "RUNS", label: "Runs", sublabel: "Agent executions", icon: Terminal },
   { key: "DECISIONS", label: "Decisions", sublabel: "Timeline + supersessions", icon: ScrollText },
   { key: "POLICIES", label: "Policies", sublabel: "Rules + violations", icon: Shield },
   { key: "EXPORT", label: "Export", sublabel: "Compliance JSON", icon: FileCheck2 },
+  { key: "KEYS", label: "API Keys", sublabel: "Connect your agent", icon: KeyRound },
 ];
 
 export function AuditShell({
@@ -139,6 +154,7 @@ export function AuditShell({
           )}
           {tab === "POLICIES" && <PoliciesTab workspaceId={workspaceId} />}
           {tab === "EXPORT" && <ExportTab workspaceId={workspaceId} />}
+          {tab === "KEYS" && <KeysTab workspaceId={workspaceId} />}
         </div>
       </ScrollArea>
     </div>
@@ -654,6 +670,252 @@ function ExportTab({ workspaceId }: { workspaceId: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/* ── API Keys tab ────────────────────────────────────────────────── */
+
+function KeysTab({ workspaceId }: { workspaceId: string }) {
+  const [keys, setKeys] = useState<ApiKeyDTO[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  // The plaintext secret, held only in memory and only until the user
+  // dismisses the reveal modal. Never re-fetchable.
+  const [revealed, setRevealed] = useState<CreatedApiKeyDTO | null>(null);
+
+  const refresh = useCallback(async () => {
+    const res = await fetch(`/api/workspaces/${workspaceId}/api-keys`);
+    if (!res.ok) {
+      setError(res.status === 403 ? "You don't have access to API keys for this workspace." : `HTTP ${res.status}`);
+      return;
+    }
+    const data = (await res.json()) as { apiKeys: ApiKeyDTO[] };
+    setError(null);
+    setKeys(data.apiKeys);
+  }, [workspaceId]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function create() {
+    if (name.trim().length < 1) {
+      toast.error("Give the key a name so you can recognize it later");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/api-keys`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (res.status === 403) throw new Error("Only a workspace owner can create API keys");
+      if (!res.ok) throw new Error("Could not create key");
+      const created = (await res.json()) as CreatedApiKeyDTO;
+      setName("");
+      setRevealed(created);
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not create key");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function revoke(keyId: string, keyName: string) {
+    if (!window.confirm(`Revoke "${keyName}"? Any agent using it will stop authenticating immediately.`)) {
+      return;
+    }
+    const prev = keys;
+    setKeys((ks) => (ks ? ks.filter((k) => k.id !== keyId) : ks));
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/api-keys/${keyId}`, {
+        method: "DELETE",
+      });
+      if (res.status === 403) throw new Error("Only a workspace owner can revoke API keys");
+      if (!res.ok) throw new Error("Could not revoke key");
+      toast.success("Key revoked");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not revoke key");
+      setKeys(prev);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <section className="max-w-2xl">
+        <p className="mb-3 inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-primary">
+          <span className="h-px w-5 bg-primary/60" />
+          Connect your agent
+        </p>
+        <h2 className="mb-2 font-serif text-2xl font-medium tracking-tight">
+          API keys for unattended agents.
+        </h2>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Pass a key as the <code className="font-mono text-[12px]">apiKey</code> to
+          the Mneme SDK and your agent logs decisions without a browser
+          session. Each key is scoped to this workspace, shown once at
+          creation, and revocable at any time.
+        </p>
+      </section>
+
+      <section className="max-w-2xl rounded-lg border border-primary/25 bg-primary/[0.04] p-4">
+        <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-primary">
+          Generate a new key
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !creating) void create();
+            }}
+            maxLength={100}
+            placeholder="e.g. pricing-agent (prod)"
+            className="font-serif"
+          />
+          <Button
+            onClick={create}
+            disabled={creating || name.trim().length < 1}
+            className="shrink-0 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            Generate key
+          </Button>
+        </div>
+        <p className="mt-2 font-mono text-[9px] uppercase tracking-wider text-muted-foreground/70">
+          The secret is shown exactly once. Owner-only.
+        </p>
+      </section>
+
+      {error && <ErrorBlock message={error} />}
+      {!keys && !error && <LoadingBlock label="Loading keys" />}
+      {keys && keys.length === 0 && !error && (
+        <div className="flex max-w-2xl flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 py-12 text-center">
+          <KeyRound className="h-7 w-7 text-muted-foreground/60" />
+          <p className="font-serif text-base font-medium">No API keys yet</p>
+          <p className="max-w-md text-xs text-muted-foreground">
+            Generate one above to connect your first agent. Until then, the
+            agent routes still accept a logged-in session.
+          </p>
+        </div>
+      )}
+      {keys && keys.length > 0 && (
+        <div className="max-w-2xl overflow-hidden rounded-lg border border-border/60">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/60 bg-card/30">
+                <Th>Name</Th>
+                <Th>Key</Th>
+                <Th>Last used</Th>
+                <Th />
+              </tr>
+            </thead>
+            <tbody>
+              {keys.map((k) => (
+                <tr key={k.id} className="border-b border-border/40 last:border-b-0">
+                  <td className="px-4 py-3">
+                    <p className="font-serif text-[15px] leading-tight">{k.name}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                      Created {timeAgo(k.createdAt)}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-[12px] text-muted-foreground">
+                    {k.keyPrefix}…
+                  </td>
+                  <td className="px-4 py-3 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+                    {k.lastUsedAt ? timeAgo(k.lastUsedAt) : "never"}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1.5 font-mono text-[10px] uppercase tracking-wider text-destructive hover:text-destructive"
+                      onClick={() => revoke(k.id, k.name)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Revoke
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <RevealKeyModal created={revealed} onClose={() => setRevealed(null)} />
+    </div>
+  );
+}
+
+function RevealKeyModal({
+  created,
+  onClose,
+}: {
+  created: CreatedApiKeyDTO | null;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    if (!created) return;
+    try {
+      await navigator.clipboard.writeText(created.plaintext);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Couldn't copy — select the key and copy manually");
+    }
+  }
+
+  return (
+    <Dialog
+      open={created !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 font-serif">
+            <KeyRound className="h-4 w-4 text-primary" />
+            {created?.apiKey.name}
+          </DialogTitle>
+          <DialogDescription>
+            Copy this key now — it will never be shown again. Store it in your
+            agent&apos;s environment as{" "}
+            <code className="font-mono text-[12px]">MNEME_API_KEY</code>.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-background/60 p-3">
+          <code className="flex-1 break-all font-mono text-[12px] text-foreground/90">
+            {created?.plaintext}
+          </code>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0 gap-1.5 font-mono text-[10px] uppercase tracking-wider"
+            onClick={copy}
+          >
+            {copied ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
+            {copied ? "Copied" : "Copy"}
+          </Button>
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            onClick={onClose}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            I&apos;ve copied it
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

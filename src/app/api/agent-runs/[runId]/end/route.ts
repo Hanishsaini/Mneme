@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { withHandler } from "@/lib/api/handler";
-import { requireMembership } from "@/lib/auth/authz";
+import { withAgentAuth, requireWorkspace } from "@/lib/api/agent-handler";
 import { Errors } from "@/lib/api/errors";
 import {
   endAgentRun,
@@ -17,14 +16,15 @@ const endBodySchema = z.object({
  * POST /api/agent-runs/:runId/end
  *
  * Close an open run with a terminal status. After this call ingestion
- * into the same runId returns 409. Member-gated.
+ * into the same runId returns 409. Session member (EDITOR+) or
+ * workspace-scoped API key.
  */
-export const POST = withHandler(
+export const POST = withAgentAuth(
   { paramsSchema, bodySchema: endBodySchema },
-  async ({ user, params, body }) => {
+  async ({ principal, params, body }) => {
     const run = await findAgentRun(params.runId);
     if (!run) throw Errors.notFound("Agent run");
-    await requireMembership(user.id, run.workspaceId, "EDITOR");
+    await requireWorkspace(principal, run.workspaceId, "EDITOR");
     if (run.status !== "RUNNING") {
       throw Errors.conflict("Run is already closed");
     }

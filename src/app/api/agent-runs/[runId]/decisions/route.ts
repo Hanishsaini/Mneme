@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { withHandler } from "@/lib/api/handler";
-import { requireMembership } from "@/lib/auth/authz";
+import { withAgentAuth, requireWorkspace } from "@/lib/api/agent-handler";
 import { Errors } from "@/lib/api/errors";
 import { findAgentRun } from "@/features/agent-audit/server/agent-runs.repository";
 import { ingestDecision } from "@/features/agent-audit/server/decision-ingestion.service";
@@ -29,16 +28,17 @@ const ingestBodySchema = z.object({
  * plus the supersession and violation arrays so the agent can react
  * in-loop.
  *
- * Member-gated (EDITOR minimum). A future commit replaces this with
- * workspace-scoped API keys for unattended agent use; for now any
- * authenticated member of the workspace can ingest.
+ * Authenticated as an EDITOR+ session member or a workspace-scoped Bearer
+ * API key — the latter is how an unattended agent ingests via the SDK.
+ * The run's own `workspaceId` is the authorization scope, so a key can
+ * only ever write into the workspace it was minted for.
  */
-export const POST = withHandler(
+export const POST = withAgentAuth(
   { paramsSchema, bodySchema: ingestBodySchema },
-  async ({ user, params, body }) => {
+  async ({ principal, params, body }) => {
     const run = await findAgentRun(params.runId);
     if (!run) throw Errors.notFound("Agent run");
-    await requireMembership(user.id, run.workspaceId, "EDITOR");
+    await requireWorkspace(principal, run.workspaceId, "EDITOR");
     if (run.status !== "RUNNING") {
       throw Errors.conflict("Cannot ingest into a closed run");
     }
@@ -66,12 +66,12 @@ export const POST = withHandler(
  *
  * Full decision timeline for a run, oldest-first. Each row carries its
  * policy violations (with the matched rule's text denormalized for
- * display). Member-gated.
+ * display). Session member or workspace-scoped API key.
  */
-export const GET = withHandler({ paramsSchema }, async ({ user, params }) => {
+export const GET = withAgentAuth({ paramsSchema }, async ({ principal, params }) => {
   const run = await findAgentRun(params.runId);
   if (!run) throw Errors.notFound("Agent run");
-  await requireMembership(user.id, run.workspaceId);
+  await requireWorkspace(principal, run.workspaceId, "VIEWER");
   const rows = await listDecisionsForRun(params.runId);
   return {
     run: { id: run.id, workspaceId: run.workspaceId, agentName: run.agentName, agentVersion: run.agentVersion, status: run.status },

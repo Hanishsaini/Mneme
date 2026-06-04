@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { withHandler } from "@/lib/api/handler";
-import { requireMembership } from "@/lib/auth/authz";
+import { withAgentAuth, requireWorkspace } from "@/lib/api/agent-handler";
 import {
   countViolationsForRun,
   createAgentRun,
@@ -20,13 +19,13 @@ const createBodySchema = z.object({
  * POST /api/workspaces/:workspaceId/agent-runs
  *
  * Opens a new agent run. The returned `run.id` is the handle the SDK uses
- * for subsequent decision-ingestion + endRun calls. Member-gated on the
- * owning workspace.
+ * for subsequent decision-ingestion + endRun calls. Accepts a session
+ * member (EDITOR+) or a workspace-scoped Bearer API key.
  */
-export const POST = withHandler(
+export const POST = withAgentAuth(
   { paramsSchema, bodySchema: createBodySchema },
-  async ({ user, params, body }) => {
-    await requireMembership(user.id, params.workspaceId, "EDITOR");
+  async ({ principal, params, body }) => {
+    await requireWorkspace(principal, params.workspaceId, "EDITOR");
     const run = await createAgentRun({
       workspaceId: params.workspaceId,
       agentName: body.agent_name,
@@ -43,8 +42,8 @@ export const POST = withHandler(
  * List runs (newest first, 50 max). Each row carries `decisionCount` and
  * unresolved-`violationCount` for the table row badges.
  */
-export const GET = withHandler({ paramsSchema }, async ({ user, params }) => {
-  await requireMembership(user.id, params.workspaceId);
+export const GET = withAgentAuth({ paramsSchema }, async ({ principal, params }) => {
+  await requireWorkspace(principal, params.workspaceId, "VIEWER");
   const runs = await listAgentRunsForWorkspace(params.workspaceId);
   // Per-run violation counts. Done after the listing query — Prisma can't
   // express "count of related grand-children where condition" in a single

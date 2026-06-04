@@ -10,12 +10,14 @@ import type {
 import type {
   AgentDecisionEvent,
   AgentRun,
+  ApiKey,
   PolicyRule,
   PolicyViolation,
 } from "@prisma/client";
 import type {
   AgentDecisionEventDTO,
   AgentRunDTO,
+  ApiKeyDTO,
   CanvasDocumentDTO,
   ConversationDTO,
   MemoryItemDTO,
@@ -223,6 +225,21 @@ export function toPolicyViolationDTO(v: PolicyViolationWithRule): PolicyViolatio
     resolvedAt: v.resolvedAt?.toISOString() ?? null,
     resolvedById: v.resolvedById,
     resolverNote: v.resolverNote,
+  };
+}
+
+/** Note: callers must select a row WITHOUT keyHash, or at minimum never
+ *  pass keyHash through — this mapper deliberately omits it so the secret
+ *  hash can't leak onto the wire even if a query over-selects. */
+export function toApiKeyDTO(k: ApiKey): ApiKeyDTO {
+  return {
+    id: k.id,
+    workspaceId: k.workspaceId,
+    name: k.name,
+    keyPrefix: k.keyPrefix,
+    isActive: k.isActive,
+    lastUsedAt: k.lastUsedAt?.toISOString() ?? null,
+    createdAt: k.createdAt.toISOString(),
   };
 }
 

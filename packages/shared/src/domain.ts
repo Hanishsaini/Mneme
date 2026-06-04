@@ -265,6 +265,27 @@ export interface AuditExportDTO {
   policyRules: PolicyRuleDTO[];
 }
 
+/** A workspace API key as shown in the management UI. Never carries the
+ *  secret — only the non-secret `keyPrefix` for identification. */
+export interface ApiKeyDTO {
+  id: string;
+  workspaceId: string;
+  name: string;
+  /** Non-secret leading slice (e.g. `mnk_a1b2c3`) for at-a-glance ID. */
+  keyPrefix: string;
+  isActive: boolean;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+/** Returned ONCE, by POST /api/workspaces/:id/api-keys. `plaintext` is the
+ *  full secret — it is never stored and never returned again, so the UI
+ *  must surface it immediately and tell the user to copy it now. */
+export interface CreatedApiKeyDTO {
+  apiKey: ApiKeyDTO;
+  plaintext: string;
+}
+
 export interface PresenceUser {
   userId: string;
   name: string | null;
