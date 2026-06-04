@@ -8,6 +8,16 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// pgvector + pg_trgm are enabled by the first migration
+// (20260525083400_enable_extensions), which is ordered before any migration
+// that uses the `vector` type so a fresh shadow database replays the whole
+// history cleanly. We deliberately do NOT enable Prisma's
+// `postgresqlExtensions` feature: turning it on makes `migrate dev` diff
+// every extension, and a Supabase database's built-ins (supabase_vault,
+// uuid-ossp, pg_stat_statements, pgcrypto) then read as drift and trigger a
+// reset prompt. The CREATE EXTENSION migration alone fixes the shadow replay
+// on both Supabase and vanilla Postgres without that side effect.
+
 // ─── Enums ────────────────────────────────────────────────────────────────
 
 enum MemberRole {

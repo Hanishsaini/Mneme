@@ -36,12 +36,18 @@ The Colorado AI Act takes effect **June 2026**. HIPAA, FINRA, SOC2 already requi
 
 Drop the SDK into any LangChain, CrewAI, AutoGen, or hand-rolled agent. Three calls.
 
+Authentication is a workspace API key, passed as `apiKey`. Generate one in
+the workspace's **API Keys** tab (`/w/<workspaceId>` → API Keys → *Generate
+key*) — the secret is shown once, so copy it into your agent's environment as
+`MNEME_API_KEY`. The key is scoped to that one workspace and can be revoked at
+any time.
+
 ```typescript
 import { MnemeClient } from "@mneme/sdk";
 
 const client = new MnemeClient({
   workspaceId: "ws_abc123",
-  apiKey: process.env.MNEME_API_KEY!,
+  apiKey: process.env.MNEME_API_KEY!, // the key from the API Keys tab
   baseUrl: "https://your-mneme.app",
 });
 
@@ -73,6 +79,34 @@ await client.endRun(runId, "COMPLETED");
 ```
 
 The SDK explicitly does **not** retry — decision logging is too important to risk silent double-writes. The caller decides retry semantics.
+
+### Runnable example: a LangChain agent
+
+[`examples/langchain-agent.ts`](examples/langchain-agent.ts) is a complete
+tool-calling pricing agent wired to Mneme: it opens a run, logs a decision
+after every tool call, prints any supersessions and policy violations the
+moment they fire, and closes the run. Run it against a real workspace:
+
+```bash
+# extra deps the example needs (not part of the app):
+pnpm add -D langchain @langchain/openai @langchain/core
+
+# point it at your workspace + a key from the API Keys tab:
+export MNEME_BASE_URL="https://your-mneme.app"   # or http://localhost:3000
+export MNEME_WORKSPACE_ID="ws_abc123"
+export MNEME_API_KEY="mnk_..."
+export OPENAI_API_KEY="sk-..."
+
+pnpm tsx examples/langchain-agent.ts
+```
+
+Run it twice — the second pricing change supersedes the first and, if your
+workspace has the seeded "no more than one pricing change per week" rule
+active, trips a policy violation you'll see in the console and in the
+**Decisions** tab.
+
+App-side configuration (database, Redis, AI keys) lives in
+[`.env.example`](.env.example) — copy it to `.env.local` to run Mneme itself.
 
 ## Competitive landscape
 
@@ -263,7 +297,6 @@ prisma/
 
 ## Roadmap
 
-- **Bearer-token API keys** for unattended agent use (currently routes use session-cookie auth)
 - **Slack + Linear connectors** so policy violations land in the channels humans actually watch
 - **LangSmith / Langfuse import** to ingest existing trace archives into Mneme retroactively
 - **Per-rule severity overrides** — let the policy author specify severity instead of having the LLM choose
