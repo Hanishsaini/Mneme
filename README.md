@@ -160,7 +160,7 @@ Any modification anywhere — change one byte of `decisionContent`, swap two con
 
 ```bash
 pnpm install
-cp .env.local.example .env.local      # fill in DATABASE_URL, REDIS_URL, NEXTAUTH_SECRET
+cp .env.example .env.local            # fill in DATABASE_URL, REDIS_URL, NEXTAUTH_SECRET
 pnpm db:generate
 pnpm db:migrate
 pnpm dev
@@ -225,6 +225,7 @@ src/
       server/
         agent-runs.repository.ts
         decision-events.repository.ts
+        decision-embedding.ts        # Gemini 768d embeddings for decisions
         decision-hybrid-search.ts    # RRF over decision events
         decision-ingestion.service.ts # The orchestrator
         supersession-detector.service.ts
