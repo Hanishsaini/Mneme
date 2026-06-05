@@ -3,15 +3,15 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { requireMembership } from "@/lib/auth/authz";
 import { prisma } from "@/lib/db/prisma";
 import { AppShell } from "@/components/layout/app-shell";
-import { AuditShell } from "@/features/agent-audit/components/audit-shell";
+import { WorkspaceSettings } from "@/features/workspace/components/workspace-settings";
 import { ApiError } from "@/lib/api/errors";
 
 /**
- * Agent Audit route — the first-class surface for the pivot. Sibling of
- * the chat route at /w/[id]/audit. Auth + membership gate, then hand off
- * to the client shell.
+ * Workspace settings — rendered in the AppShell. Server-fetches the workspace
+ * + members and the caller's role so the client form knows whether to enable
+ * the owner-only rename / delete controls.
  */
-export default async function AuditPage({
+export default async function WorkspaceSettingsPage({
   params,
 }: {
   params: Promise<{ workspaceId: string }>;
@@ -22,21 +22,32 @@ export default async function AuditPage({
   if (!user) redirect("/login");
 
   try {
-    await requireMembership(user.id, workspaceId);
+    const membership = await requireMembership(user.id, workspaceId);
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
-      select: { id: true, name: true },
+      include: { members: { include: { user: true }, orderBy: { joinedAt: "asc" } } },
     });
     if (!workspace) notFound();
+
     return (
       <AppShell
         workspaceId={workspace.id}
         workspaceName={workspace.name}
-        active="audit"
+        active="settings"
         userName={user.name}
         userEmail={user.email}
       >
-        <AuditShell workspaceId={workspace.id} workspaceName={workspace.name} />
+        <WorkspaceSettings
+          workspaceId={workspace.id}
+          initialName={workspace.name}
+          isOwner={membership.role === "OWNER"}
+          members={workspace.members.map((m) => ({
+            id: m.id,
+            role: m.role,
+            name: m.user.name,
+            email: m.user.email,
+          }))}
+        />
       </AppShell>
     );
   } catch (err) {

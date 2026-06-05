@@ -3,69 +3,101 @@
 @tailwind utilities;
 
 /*
- * Mneme visual identity — "archive / dossier" aesthetic.
+ * Mneme visual identity — "Linear met a compliance terminal."
  *
- * Signature color is deep amber (HSL ~32 96% 47%) rather than the
- * generic violet of every other AI-memory tool. Amber reads as warm,
- * institutional, "this is a record" — the right register for a memory
- * product. Backgrounds are warm-graphite in dark mode, off-cream in
- * light, never pure black or pure white — both feel sterile and clinical.
+ * Precise, dark, trustworthy. One accent (amber). Semantic colors for
+ * state only. Never pure black. No serif anywhere in the app shell —
+ * Inter for UI, JetBrains Mono for hashes / IDs / keys.
  *
- * Three font families wired in layout.tsx:
- *   --font-sans   Inter           — body, UI controls
- *   --font-serif  Newsreader      — landing hero, dossier headlines
- *   --font-mono   JetBrains Mono  — IDs, timestamps, raw system bits
+ * Two token layers live here:
+ *  1. The raw design tokens (--bg-*, --text-*, --accent-*, severity, hash)
+ *     — the source of truth, used directly by the design-system components
+ *     via `var(--token)`.
+ *  2. The shadcn HSL aliases (--background, --card, --primary, …) remapped
+ *     onto the same palette, so every pre-existing component that styles
+ *     with `bg-background` / `text-muted-foreground` adopts the new system
+ *     without a rewrite.
  */
 
 @layer base {
   :root {
-    /* Off-cream paper, not pure white */
-    --background: 36 30% 97%;
-    --foreground: 28 15% 12%;
-    --card: 36 30% 99%;
-    --card-foreground: 28 15% 12%;
-    --popover: 36 30% 99%;
-    --popover-foreground: 28 15% 12%;
-    /* Amber as primary — the signature */
-    --primary: 32 96% 47%;
-    --primary-foreground: 36 30% 97%;
-    --secondary: 36 20% 92%;
-    --secondary-foreground: 28 15% 12%;
-    --muted: 36 18% 93%;
-    --muted-foreground: 28 8% 42%;
-    --accent: 36 25% 90%;
-    --accent-foreground: 28 15% 12%;
-    --destructive: 0 70% 45%;
-    --destructive-foreground: 36 30% 97%;
-    --border: 32 14% 86%;
-    --input: 32 14% 86%;
-    --ring: 32 96% 47%;
+    /* ── Raw design tokens ─────────────────────────────────────────── */
+
+    /* Base surfaces — never pure black */
+    --bg-base: #0a0a0b;
+    --bg-surface: #111113;
+    --bg-elevated: #1a1a1f;
+    --bg-overlay: #222228;
+    --bg-subtle: #2a2a32;
+
+    /* Borders */
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-default: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.18);
+
+    /* Text */
+    --text-primary: #f0f0f2;
+    --text-secondary: #8b8b99;
+    --text-tertiary: #55555f;
+    --text-disabled: #3a3a42;
+
+    /* Brand accent — amber */
+    --accent-amber: #f59e0b;
+    --accent-amber-subtle: rgba(245, 158, 11, 0.12);
+    --accent-amber-border: rgba(245, 158, 11, 0.25);
+
+    /* Semantic colors */
+    --color-success: #10b981;
+    --color-success-subtle: rgba(16, 185, 129, 0.1);
+    --color-danger: #ef4444;
+    --color-danger-subtle: rgba(239, 68, 68, 0.1);
+    --color-warning: #f59e0b;
+    --color-warning-subtle: rgba(245, 158, 11, 0.1);
+    --color-info: #6366f1;
+    --color-info-subtle: rgba(99, 102, 241, 0.1);
+
+    /* Violation severity */
+    --severity-critical: #ef4444;
+    --severity-high: #f97316;
+    --severity-medium: #f59e0b;
+    --severity-low: #6366f1;
+
+    /* Hash / monospace accent */
+    --hash-color: #4ade80;
+
+    /* Elevation shadows — never decorative */
+    --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.5);
+    --shadow-3: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+
+    /* ── shadcn aliases, remapped onto the dark palette ────────────── */
+    /* HSL equivalents of the hex tokens above (shadcn consumes `H S% L%`). */
+    --background: 240 6% 4%; /* bg-base */
+    --foreground: 240 11% 95%; /* text-primary */
+    --card: 240 6% 7%; /* bg-surface */
+    --card-foreground: 240 11% 95%;
+    --popover: 240 9% 11%; /* bg-elevated */
+    --popover-foreground: 240 11% 95%;
+    --primary: 38 92% 50%; /* accent-amber */
+    --primary-foreground: 240 6% 4%;
+    --secondary: 240 9% 11%; /* bg-elevated */
+    --secondary-foreground: 240 11% 95%;
+    --muted: 240 6% 9%;
+    --muted-foreground: 240 8% 57%; /* text-secondary */
+    --accent: 240 9% 15%; /* bg-overlay */
+    --accent-foreground: 240 11% 95%;
+    --destructive: 0 84% 60%; /* color-danger */
+    --destructive-foreground: 240 11% 95%;
+    --border: 240 6% 15%; /* ~ white @ 0.10 over base */
+    --input: 240 6% 17%;
+    --ring: 38 92% 50%;
     --radius: 0.5rem;
   }
 
+  /* Dark is the only theme; `.dark` mirrors :root so next-themes' forced
+   * class is a no-op rather than a second palette to maintain. */
   .dark {
-    /* Warm graphite, not pure black — keeps the parchment warmth in
-     * the dark surface so amber accents don't look neon. */
-    --background: 28 12% 7%;
-    --foreground: 36 30% 95%;
-    --card: 28 12% 10%;
-    --card-foreground: 36 30% 95%;
-    --popover: 28 12% 10%;
-    --popover-foreground: 36 30% 95%;
-    /* Slightly brighter amber for dark surfaces */
-    --primary: 32 95% 58%;
-    --primary-foreground: 28 12% 7%;
-    --secondary: 28 8% 16%;
-    --secondary-foreground: 36 30% 95%;
-    --muted: 28 8% 14%;
-    --muted-foreground: 36 15% 65%;
-    --accent: 28 8% 18%;
-    --accent-foreground: 36 30% 95%;
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 36 30% 95%;
-    --border: 28 8% 18%;
-    --input: 28 8% 20%;
-    --ring: 32 95% 58%;
+    color-scheme: dark;
   }
 }
 
@@ -77,11 +109,11 @@
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
   }
-  /* Serif headlines opt in via .font-serif — used by hero and the
-   * "dossier" section headers on the landing + memory panel. */
+  /* Serif is allowed ONLY as a deliberate contrast on the public landing
+   * page (it opts in with .font-serif). It must never appear in the app
+   * shell — do not add .font-serif to any /dashboard, /w, or settings UI. */
   .font-serif {
     font-family: var(--font-serif), Georgia, serif;
-    font-feature-settings: "kern" 1, "liga" 1;
     letter-spacing: -0.012em;
   }
   .font-mono {
@@ -89,31 +121,123 @@
   }
 }
 
-@layer utilities {
-  .glass {
-    @apply bg-card/60 backdrop-blur-xl border border-border/60;
+/* ── Type scale ──────────────────────────────────────────────────────
+ * Namespaced `type-*` so they never collide with Tailwind's `text-*`
+ * color/size utilities. One class sets size + weight + tracking together. */
+@layer components {
+  .type-display {
+    font-size: 24px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
   }
+  .type-heading {
+    font-size: 18px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+  }
+  .type-subheading {
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+  .type-body {
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0;
+    line-height: 1.6;
+  }
+  .type-small {
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+  }
+  .type-micro {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .type-mono {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 13px;
+  }
+}
+
+@layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--border)) transparent;
+    scrollbar-color: var(--bg-subtle) transparent;
   }
-  /* Subtle aged-paper texture for archive surfaces. CSS-only, no asset. */
+  /* Hero glow — a single subtle amber radial, centered above the fold. */
+  .hero-radial {
+    background-image: radial-gradient(
+      ellipse 80% 40% at 50% -10%,
+      rgba(245, 158, 11, 0.08),
+      transparent
+    );
+  }
+  /* Split amber/red accent bar for a decision that is BOTH superseded and
+   * violated — the only place a gradient is permitted (state, not decor). */
+  .accent-split {
+    background-image: linear-gradient(
+      180deg,
+      var(--accent-amber) 0%,
+      var(--accent-amber) 50%,
+      var(--color-danger) 50%,
+      var(--color-danger) 100%
+    );
+  }
+  /* Legacy no-ops — older surfaces still reference these classes; keep them
+   * defined and inert until those surfaces are rebuilt. */
   .paper-grain {
-    background-image:
-      radial-gradient(
-        circle at 25% 30%,
-        hsl(var(--foreground) / 0.018) 0,
-        transparent 50%
-      ),
-      radial-gradient(
-        circle at 75% 70%,
-        hsl(var(--foreground) / 0.012) 0,
-        transparent 50%
-      );
+    background-image: none;
   }
-  /* Hairline-rule used to separate dossier rows. Slightly warmer than
-   * the standard border so amber pages don't feel grey. */
-  .rule-warm {
-    @apply border-[hsl(32,14%,82%)] dark:border-[hsl(28,8%,20%)];
+  .glass {
+    @apply bg-card/70 backdrop-blur-xl border border-border;
+  }
+}
+
+/* ── Micro-interaction keyframes ─────────────────────────────────────
+ * Durations chosen for a data-dense UI: short, ease-out, mostly one-shot. */
+@keyframes mneme-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes mneme-slide-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes mneme-pulse-once {
+  0% {
+    box-shadow: 0 0 0 0 var(--color-danger-subtle);
+  }
+  60% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+@keyframes mneme-running-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.85);
   }
 }

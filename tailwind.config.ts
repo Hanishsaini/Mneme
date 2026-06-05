@@ -51,11 +51,69 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Design-system tokens. Names are chosen NOT to collide with the
+        // shadcn aliases above, so `text-secondary` etc. keep their meaning.
+        success: {
+          DEFAULT: "var(--color-success)",
+          subtle: "var(--color-success-subtle)",
+        },
+        danger: {
+          DEFAULT: "var(--color-danger)",
+          subtle: "var(--color-danger-subtle)",
+        },
+        warning: {
+          DEFAULT: "var(--color-warning)",
+          subtle: "var(--color-warning-subtle)",
+        },
+        info: {
+          DEFAULT: "var(--color-info)",
+          subtle: "var(--color-info-subtle)",
+        },
+        amber: {
+          DEFAULT: "var(--accent-amber)",
+          subtle: "var(--accent-amber-subtle)",
+          border: "var(--accent-amber-border)",
+        },
+        severity: {
+          critical: "var(--severity-critical)",
+          high: "var(--severity-high)",
+          medium: "var(--severity-medium)",
+          low: "var(--severity-low)",
+        },
+        hash: "var(--hash-color)",
+        // Raw surface + ink ramps for explicit elevation control.
+        surface: {
+          base: "var(--bg-base)",
+          DEFAULT: "var(--bg-surface)",
+          elevated: "var(--bg-elevated)",
+          overlay: "var(--bg-overlay)",
+          subtle: "var(--bg-subtle)",
+        },
+        ink: {
+          DEFAULT: "var(--text-primary)",
+          secondary: "var(--text-secondary)",
+          tertiary: "var(--text-tertiary)",
+          disabled: "var(--text-disabled)",
+        },
+        hairline: {
+          subtle: "var(--border-subtle)",
+          DEFAULT: "var(--border-default)",
+          strong: "var(--border-strong)",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        field: "6px",
+        card: "8px",
+        modal: "12px",
+        pill: "9999px",
+      },
+      boxShadow: {
+        elev1: "var(--shadow-1)",
+        elev2: "var(--shadow-2)",
+        elev3: "var(--shadow-3)",
       },
       keyframes: {
         "accordion-down": {
@@ -75,6 +133,11 @@ const config: Config = {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "pulse-subtle": "pulse-subtle 1.4s ease-in-out infinite",
+        // Micro-interactions (keyframes defined in globals.css).
+        "fade-in": "mneme-fade-in 150ms ease-out",
+        "slide-in-top": "mneme-slide-in-top 200ms ease-out",
+        "pulse-once": "mneme-pulse-once 1s ease-out 1",
+        "running-dot": "mneme-running-dot 2s ease-in-out infinite",
       },
     },
   },

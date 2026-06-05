@@ -1,19 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertOctagon,
-  ArrowLeft,
-  ArrowRight,
-  Bot,
   Check,
-  CheckCircle2,
-  ChevronDown,
   Copy,
   Download,
   FileCheck2,
-  GitBranch,
   KeyRound,
   Loader2,
   Plus,
@@ -21,17 +13,27 @@ import {
   Shield,
   Terminal,
   Trash2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import type {
-  AgentDecisionEventDTO,
   AgentRunDTO,
   ApiKeyDTO,
+  AuditExportDTO,
   CreatedApiKeyDTO,
   PolicyRuleDTO,
-  PolicyViolationDTO,
   PolicyViolationSeverity,
 } from "@workspace/shared";
+import {
+  Badge,
+  DecisionCard,
+  type DecisionCardViolation,
+  EmptyState,
+  HashDisplay,
+  StatPill,
+  StatPillGroup,
+  violationTone,
+} from "@/components/design";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,32 +43,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
+import { cn, formatDuration, timeAgo } from "@/lib/utils";
 
 /**
- * Agent Audit — the first-class surface for the pivot.
+ * Agent Audit — the core product surface, rendered inside the AppShell.
  *
- * Four tabs match the four user jobs:
- *   Runs       — survey what's running / what just ran
- *   Decisions  — drill into the timeline, see supersession + violations
- *                inline in the flow
- *   Policies   — define + manage the rules the engine enforces
- *   Export     — hand a compliance officer a verifiable JSON file
- *
- * Visual register matches the Memory dossier: serif headlines, mono
- * for ids / timestamps / system labels, amber as the only accent,
- * red strictly reserved for violations (the signal you can't miss).
+ * One audit-export fetch hydrates Runs + Decisions + the slide-in run detail
+ * (the export nests runs → decisions → violations). Policies and API Keys hit
+ * their own endpoints; Export re-generates on demand.
  */
 
 type Tab = "RUNS" | "DECISIONS" | "POLICIES" | "EXPORT" | "KEYS";
+type ExportRun = AuditExportDTO["runs"][number];
+type ExportDecision = ExportRun["decisions"][number];
 
-const TABS: Array<{ key: Tab; label: string; sublabel: string; icon: React.ComponentType<{ className?: string }> }> = [
-  { key: "RUNS", label: "Runs", sublabel: "Agent executions", icon: Terminal },
-  { key: "DECISIONS", label: "Decisions", sublabel: "Timeline + supersessions", icon: ScrollText },
-  { key: "POLICIES", label: "Policies", sublabel: "Rules + violations", icon: Shield },
-  { key: "EXPORT", label: "Export", sublabel: "Compliance JSON", icon: FileCheck2 },
-  { key: "KEYS", label: "API Keys", sublabel: "Connect your agent", icon: KeyRound },
+const TABS: Array<{ key: Tab; label: string }> = [
+  { key: "RUNS", label: "Runs" },
+  { key: "DECISIONS", label: "Decisions" },
+  { key: "POLICIES", label: "Policies" },
+  { key: "EXPORT", label: "Export" },
+  { key: "KEYS", label: "API Keys" },
 ];
 
 export function AuditShell({
@@ -77,389 +73,593 @@ export function AuditShell({
   workspaceName: string;
 }) {
   const [tab, setTab] = useState<Tab>("RUNS");
+  const [runs, setRuns] = useState<ExportRun[] | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-
-  return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background paper-grain">
-      <header className="border-b border-border/60 bg-card/30 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              href={`/w/${workspaceId}`}
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-3 w-3" />
-              Back to chat
-            </Link>
-            <div className="h-4 w-px bg-border" />
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-primary">
-                Agent audit
-              </p>
-              <h1 className="font-serif text-xl font-medium leading-tight tracking-tight">
-                {workspaceName}
-              </h1>
-            </div>
-          </div>
-          <span className="hidden font-mono text-[10px] uppercase tracking-wider text-muted-foreground sm:inline-flex">
-            workspace · {workspaceId}
-          </span>
-        </div>
-      </header>
-
-      <nav className="shrink-0 border-b border-border/60 bg-card/20 px-6">
-        <div className="flex gap-6 overflow-x-auto">
-          {TABS.map((t) => {
-            const Icon = t.icon;
-            const active = tab === t.key;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setTab(t.key)}
-                className={cn(
-                  "relative flex flex-col items-start py-3 text-left whitespace-nowrap transition-colors",
-                  active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <span className="flex items-center gap-2 font-serif text-base font-medium tracking-tight">
-                  <Icon className="h-3.5 w-3.5" />
-                  {t.label}
-                </span>
-                <span className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-foreground/70">
-                  {t.sublabel}
-                </span>
-                {active && (
-                  <span className="absolute inset-x-0 bottom-[-1px] h-[2px] bg-primary" />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </nav>
-
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="px-6 py-6">
-          {tab === "RUNS" && (
-            <RunsTab
-              workspaceId={workspaceId}
-              onPickRun={(id) => {
-                setSelectedRunId(id);
-                setTab("DECISIONS");
-              }}
-            />
-          )}
-          {tab === "DECISIONS" && (
-            <DecisionsTab workspaceId={workspaceId} initialRunId={selectedRunId} />
-          )}
-          {tab === "POLICIES" && <PoliciesTab workspaceId={workspaceId} />}
-          {tab === "EXPORT" && <ExportTab workspaceId={workspaceId} />}
-          {tab === "KEYS" && <KeysTab workspaceId={workspaceId} />}
-        </div>
-      </ScrollArea>
-    </div>
-  );
-}
-
-/* ── Runs tab ────────────────────────────────────────────────────── */
-
-function RunsTab({
-  workspaceId,
-  onPickRun,
-}: {
-  workspaceId: string;
-  onPickRun: (id: string) => void;
-}) {
-  const [runs, setRuns] = useState<AgentRunDTO[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/workspaces/${workspaceId}/agent-runs`)
+    fetch(`/api/workspaces/${workspaceId}/audit-export`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((data: { runs: AgentRunDTO[] }) => {
+      .then((data: AuditExportDTO) => {
         if (!cancelled) setRuns(data.runs);
       })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed");
+      .catch(() => {
+        if (!cancelled) setRuns([]);
       });
     return () => {
       cancelled = true;
     };
   }, [workspaceId]);
 
-  if (error) return <ErrorBlock message={error} />;
-  if (!runs) return <LoadingBlock label="Loading runs" />;
-  if (runs.length === 0) return <EmptyBlock kind="RUNS" />;
+  const onlyDemo = useMemo(
+    () =>
+      runs != null &&
+      (runs.length === 0 ||
+        runs.every((r) => r.agentName.startsWith("example-"))),
+    [runs],
+  );
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border/60">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border/60 bg-card/30">
-            <Th>Agent</Th>
-            <Th>Started</Th>
-            <Th align="right">Decisions</Th>
-            <Th align="right">Violations</Th>
-            <Th>Status</Th>
-            <Th />
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((run) => (
-            <tr
-              key={run.id}
-              className="cursor-pointer border-b border-border/40 transition-colors last:border-b-0 hover:bg-card/40"
-              onClick={() => onPickRun(run.id)}
+    <div className="px-8 py-7">
+      <OnboardingBanner
+        workspaceId={workspaceId}
+        show={onlyDemo}
+        onGenerateKey={() => setTab("KEYS")}
+      />
+
+      {/* Secondary tab nav */}
+      <nav className="mb-6 flex gap-1 border-b border-hairline-subtle">
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={cn(
+                "relative -mb-px px-3 py-2.5 type-subheading transition-colors",
+                active ? "text-ink" : "text-ink-tertiary hover:text-ink-secondary",
+              )}
             >
-              <td className="px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <Bot className="h-3.5 w-3.5 text-muted-foreground" />
-                  <div>
-                    <p className="font-serif text-[15px] leading-tight">{run.agentName}</p>
-                    {run.agentVersion && (
-                      <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
-                        {run.agentVersion}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </td>
-              <td className="px-4 py-3 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
-                {timeAgo(run.startedAt)}
-              </td>
-              <td className="px-4 py-3 text-right font-mono text-[12px]">
-                {run.decisionCount ?? 0}
-              </td>
-              <td className="px-4 py-3 text-right">
-                {run.violationCount && run.violationCount > 0 ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-destructive">
-                    <AlertOctagon className="h-2.5 w-2.5" />
-                    {run.violationCount}
-                  </span>
-                ) : (
-                  <span className="font-mono text-[10px] text-muted-foreground/60">—</span>
-                )}
-              </td>
-              <td className="px-4 py-3">
-                <StatusPill status={run.status} />
-              </td>
-              <td className="px-4 py-3 text-right">
-                <ArrowRight className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              {t.label}
+              {active && (
+                <span
+                  className="absolute inset-x-0 bottom-[-1px] h-0.5"
+                  style={{ backgroundColor: "var(--accent-amber)" }}
+                />
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div key={tab} className="animate-fade-in">
+        {tab === "RUNS" && (
+          <RunsTab
+            runs={runs}
+            onOpenRun={setSelectedRunId}
+            onGoToKeys={() => setTab("KEYS")}
+            onGoToExport={() => setTab("EXPORT")}
+          />
+        )}
+        {tab === "DECISIONS" && <DecisionsTab runs={runs} />}
+        {tab === "POLICIES" && <PoliciesTab workspaceId={workspaceId} />}
+        {tab === "EXPORT" && (
+          <ExportTab workspaceId={workspaceId} workspaceName={workspaceName} />
+        )}
+        {tab === "KEYS" && <KeysTab workspaceId={workspaceId} />}
+      </div>
+
+      <RunDetailPanel
+        run={runs?.find((r) => r.id === selectedRunId) ?? null}
+        onClose={() => setSelectedRunId(null)}
+      />
     </div>
   );
 }
 
-function StatusPill({ status }: { status: AgentRunDTO["status"] }) {
-  const map: Record<AgentRunDTO["status"], string> = {
-    RUNNING: "bg-primary/15 text-primary",
-    COMPLETED: "bg-emerald-500/15 text-emerald-300",
-    FAILED: "bg-destructive/15 text-destructive",
-    CANCELLED: "bg-muted text-muted-foreground",
-  };
+/* ── Page header ─────────────────────────────────────────────────── */
+
+function PageHeader({
+  title,
+  subtitle,
+  actions,
+}: {
+  title: string;
+  subtitle: string;
+  actions?: React.ReactNode;
+}) {
   return (
-    <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider", map[status])}>
-      {status.toLowerCase()}
-    </span>
+    <div className="mb-6 flex items-start justify-between gap-4">
+      <div>
+        <h1 className="type-display text-ink">{title}</h1>
+        <p className="mt-1 type-body text-ink-secondary">{subtitle}</p>
+      </div>
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+/* ── Onboarding banner ───────────────────────────────────────────── */
+
+function OnboardingBanner({
+  workspaceId,
+  show,
+  onGenerateKey,
+}: {
+  workspaceId: string;
+  show: boolean;
+  onGenerateKey: () => void;
+}) {
+  const storageKey = `mneme-onboarding-dismissed-${workspaceId}`;
+  const [dismissed, setDismissed] = useState(true);
+
+  useEffect(() => {
+    setDismissed(localStorage.getItem(storageKey) === "1");
+  }, [storageKey]);
+
+  if (!show || dismissed) return null;
+
+  function dismiss() {
+    localStorage.setItem(storageKey, "1");
+    setDismissed(true);
+  }
+
+  const steps = [
+    { label: "Generate API key", onClick: onGenerateKey },
+    { label: "Install SDK", href: "/#integrate" },
+    { label: "Run your agent", href: "/#integrate" },
+  ];
+
+  return (
+    <div
+      className="mb-6 rounded-card border-l-2 p-4"
+      style={{
+        borderColor: "var(--accent-amber)",
+        backgroundColor: "var(--accent-amber-subtle)",
+      }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="type-subheading text-ink">
+            You&apos;re looking at demo data.
+          </p>
+          <p className="mt-0.5 type-body text-ink-secondary">
+            Connect your first agent in 3 steps.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={dismiss}
+          aria-label="Dismiss"
+          className="text-ink-tertiary transition-colors hover:text-ink"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {steps.map((step, i) =>
+          step.href ? (
+            <a
+              key={step.label}
+              href={step.href}
+              className="inline-flex items-center gap-1.5 rounded-field border border-hairline px-2.5 py-1 type-small text-ink transition-colors hover:bg-surface-elevated"
+            >
+              <span className="type-micro text-ink-tertiary">{i + 1}</span>
+              {step.label}
+            </a>
+          ) : (
+            <button
+              key={step.label}
+              type="button"
+              onClick={step.onClick}
+              className="inline-flex items-center gap-1.5 rounded-field border border-hairline px-2.5 py-1 type-small text-ink transition-colors hover:bg-surface-elevated"
+            >
+              <span className="type-micro text-ink-tertiary">{i + 1}</span>
+              {step.label}
+            </button>
+          ),
+        )}
+        <span className="ml-1 type-small text-ink-tertiary">0/3 complete</span>
+      </div>
+    </div>
+  );
+}
+
+/* ── Runs tab ────────────────────────────────────────────────────── */
+
+function runSupersessions(run: ExportRun): number {
+  return run.decisions.filter((d) => d.supersededById !== null).length;
+}
+function runViolations(run: ExportRun): number {
+  return run.decisions.reduce((n, d) => n + d.violations.length, 0);
+}
+
+function RunsTab({
+  runs,
+  onOpenRun,
+  onGoToKeys,
+  onGoToExport,
+}: {
+  runs: ExportRun[] | null;
+  onOpenRun: (id: string) => void;
+  onGoToKeys: () => void;
+  onGoToExport: () => void;
+}) {
+  return (
+    <div>
+      <PageHeader
+        title="Agent Runs"
+        subtitle="Audit trail for all autonomous agent activity"
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={onGoToKeys}>
+              New API Key
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onGoToExport}>
+              Export all
+            </Button>
+          </>
+        }
+      />
+
+      {runs === null ? (
+        <LoadingRow label="Loading runs" />
+      ) : runs.length === 0 ? (
+        <EmptyState
+          icon={Terminal}
+          heading="No agent runs yet"
+          body="Once your agents log decisions via the SDK, every run shows up here with its decision, supersession, and violation counts."
+        />
+      ) : (
+        <div className="overflow-hidden rounded-card border border-hairline-subtle">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-hairline-subtle bg-surface">
+                <Th>Agent</Th>
+                <Th>Started</Th>
+                <Th>Duration</Th>
+                <Th align="right">Decisions</Th>
+                <Th align="right">Supersessions</Th>
+                <Th align="right">Violations</Th>
+                <Th>Status</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((run) => {
+                const sup = runSupersessions(run);
+                const vio = runViolations(run);
+                const duration = formatDuration(run.startedAt, run.endedAt);
+                return (
+                  <tr
+                    key={run.id}
+                    onClick={() => onOpenRun(run.id)}
+                    className="cursor-pointer border-b border-hairline-subtle transition-colors last:border-b-0 hover:bg-surface-elevated"
+                  >
+                    <td className="px-4 py-3">
+                      <span className="type-subheading text-ink">
+                        {run.agentName}
+                      </span>
+                      {run.agentVersion && (
+                        <span className="ml-2 type-small text-ink-tertiary">
+                          {run.agentVersion}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 type-small text-ink-secondary">
+                      {timeAgo(run.startedAt)}
+                    </td>
+                    <td className="px-4 py-3 type-small text-ink-secondary">
+                      {duration ?? <RunningIndicator />}
+                    </td>
+                    <td className="px-4 py-3 text-right type-small tabular-nums text-ink">
+                      {run.decisions.length}
+                    </td>
+                    <td className="px-4 py-3 text-right type-small tabular-nums">
+                      {sup > 0 ? (
+                        <span style={{ color: "var(--accent-amber)" }}>{sup}</span>
+                      ) : (
+                        <span className="text-ink-tertiary">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {vio > 0 ? (
+                        <span className="type-small tabular-nums" style={{ color: "var(--color-danger)" }}>
+                          {vio}
+                        </span>
+                      ) : (
+                        <Check className="ml-auto h-3.5 w-3.5" style={{ color: "var(--color-success)" }} />
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusChip status={run.status} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Run detail slide-in panel ───────────────────────────────────── */
+
+function RunDetailPanel({
+  run,
+  onClose,
+}: {
+  run: ExportRun | null;
+  onClose: () => void;
+}) {
+  const open = run !== null;
+  return (
+    <>
+      <div
+        className={cn(
+          "fixed inset-0 z-40 bg-black/50 transition-opacity duration-200",
+          open ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+        onClick={onClose}
+      />
+      <aside
+        className={cn(
+          "fixed inset-y-0 right-0 z-50 flex w-full max-w-[480px] flex-col border-l border-hairline-subtle bg-surface shadow-elev3 transition-transform duration-200 ease-out",
+          open ? "translate-x-0" : "translate-x-full",
+        )}
+      >
+        {run && (
+          <>
+            <div className="flex items-start justify-between gap-3 border-b border-hairline-subtle px-5 py-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="type-heading text-ink">{run.agentName}</h2>
+                  <StatusChip status={run.status} />
+                </div>
+                <p className="mt-0.5 type-small text-ink-tertiary">
+                  {run.agentVersion || "—"} · started {timeAgo(run.startedAt)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="text-ink-tertiary transition-colors hover:text-ink"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="border-b border-hairline-subtle px-5 py-3">
+              <StatPillGroup>
+                <StatPill value={run.decisions.length} label="decisions" />
+                <StatPill
+                  value={runSupersessions(run)}
+                  label="supersessions"
+                  tone="amber"
+                />
+                <StatPill
+                  value={runViolations(run)}
+                  label="violations"
+                  tone={violationTone(runViolations(run))}
+                />
+              </StatPillGroup>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4 scrollbar-thin">
+              {runViolations(run) > 0 && (
+                <div
+                  className="rounded-field border-l-2 px-3 py-2 type-small"
+                  style={{
+                    borderColor: "var(--color-danger)",
+                    backgroundColor: "var(--color-danger-subtle)",
+                    color: "var(--color-danger)",
+                  }}
+                >
+                  {runViolations(run)} policy violation
+                  {runViolations(run) === 1 ? "" : "s"} in this run
+                </div>
+              )}
+              {run.decisions.map((d) => (
+                <DecisionCardFromDTO key={d.id} decision={d} run={run} />
+              ))}
+            </div>
+          </>
+        )}
+      </aside>
+    </>
   );
 }
 
 /* ── Decisions tab ───────────────────────────────────────────────── */
 
-interface DecisionWithViolations extends AgentDecisionEventDTO {
-  violations: PolicyViolationDTO[];
+type DecisionFilter = "ALL" | "VIOLATED" | "SUPERSEDED" | "CLEAN";
+type DateRange = "TODAY" | "7D" | "30D" | "ALL";
+
+function withinRange(iso: string, range: DateRange): boolean {
+  if (range === "ALL") return true;
+  const age = Date.now() - new Date(iso).getTime();
+  const DAY = 86_400_000;
+  if (range === "TODAY") return age < DAY;
+  if (range === "7D") return age < 7 * DAY;
+  return age < 30 * DAY;
 }
 
-function DecisionsTab({
-  workspaceId,
-  initialRunId,
-}: {
-  workspaceId: string;
-  initialRunId: string | null;
-}) {
-  const [runs, setRuns] = useState<AgentRunDTO[] | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(initialRunId);
-  const [decisions, setDecisions] = useState<DecisionWithViolations[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+function DecisionsTab({ runs }: { runs: ExportRun[] | null }) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<DecisionFilter>("ALL");
+  const [range, setRange] = useState<DateRange>("ALL");
+  const [agents, setAgents] = useState<string[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/workspaces/${workspaceId}/agent-runs`)
-      .then((r) => r.json() as Promise<{ runs: AgentRunDTO[] }>)
-      .then((data) => {
-        if (cancelled) return;
-        setRuns(data.runs);
-        if (!selectedRunId && data.runs.length > 0) {
-          setSelectedRunId(data.runs[0].id);
-        }
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [workspaceId, selectedRunId]);
+  const agentNames = useMemo(
+    () => Array.from(new Set((runs ?? []).map((r) => r.agentName))),
+    [runs],
+  );
 
-  useEffect(() => {
-    if (!selectedRunId) return;
-    let cancelled = false;
-    setDecisions(null);
-    fetch(`/api/agent-runs/${selectedRunId}/decisions`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((data: { decisions: DecisionWithViolations[] }) => {
-        if (!cancelled) setDecisions(data.decisions);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedRunId]);
+  const filteredRuns = useMemo(() => {
+    if (!runs) return [];
+    return runs
+      .filter((r) => agents.length === 0 || agents.includes(r.agentName))
+      .map((run) => ({
+        run,
+        decisions: run.decisions.filter((d) => {
+          if (!withinRange(d.decidedAt, range)) return false;
+          if (search && !d.decisionContent.toLowerCase().includes(search.toLowerCase()))
+            return false;
+          const violated = d.violations.length > 0;
+          const superseded = d.supersededById !== null;
+          if (filter === "VIOLATED") return violated;
+          if (filter === "SUPERSEDED") return superseded;
+          if (filter === "CLEAN") return !violated && !superseded;
+          return true;
+        }),
+      }))
+      .filter((g) => g.decisions.length > 0);
+  }, [runs, agents, range, search, filter]);
 
-  if (!runs) return <LoadingBlock label="Loading" />;
-  if (runs.length === 0) return <EmptyBlock kind="RUNS" />;
+  if (runs === null) return <LoadingRow label="Loading decisions" />;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          Filter by run
-        </span>
-        {runs.map((r) => (
-          <button
-            key={r.id}
-            type="button"
-            onClick={() => setSelectedRunId(r.id)}
-            className={cn(
-              "rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors",
-              selectedRunId === r.id
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground",
-            )}
-          >
-            {r.agentName}
-          </button>
-        ))}
+    <div>
+      <PageHeader
+        title="Decisions"
+        subtitle="Every agent decision across this workspace, newest last per run"
+      />
+
+      {/* Filter bar */}
+      <div className="mb-6 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search decision content…"
+            className="h-8 max-w-xs border-hairline-subtle bg-surface"
+          />
+          <FilterChips<DecisionFilter>
+            options={[
+              ["ALL", "All"],
+              ["VIOLATED", "Violated"],
+              ["SUPERSEDED", "Superseded"],
+              ["CLEAN", "Clean"],
+            ]}
+            value={filter}
+            onChange={setFilter}
+          />
+          <FilterChips<DateRange>
+            options={[
+              ["TODAY", "Today"],
+              ["7D", "7d"],
+              ["30D", "30d"],
+              ["ALL", "All"],
+            ]}
+            value={range}
+            onChange={setRange}
+          />
+        </div>
+        {agentNames.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="type-micro text-ink-tertiary">Agents</span>
+            {agentNames.map((name) => {
+              const on = agents.includes(name);
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() =>
+                    setAgents((a) =>
+                      on ? a.filter((x) => x !== name) : [...a, name],
+                    )
+                  }
+                  className={cn(
+                    "rounded-pill border px-2.5 py-1 type-small transition-colors",
+                    on
+                      ? "border-amber-border text-ink"
+                      : "border-hairline-subtle text-ink-tertiary hover:text-ink-secondary",
+                  )}
+                  style={on ? { backgroundColor: "var(--accent-amber-subtle)" } : undefined}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {error && <ErrorBlock message={error} />}
-      {!decisions && !error && <LoadingBlock label="Loading decisions" />}
-      {decisions && decisions.length === 0 && <EmptyBlock kind="DECISIONS" />}
-      {decisions && decisions.length > 0 && (
-        <ol className="relative space-y-4 border-l-2 border-border/60 pl-6">
-          {decisions.map((d) => (
-            <DecisionCard key={d.id} decision={d} />
+      {filteredRuns.length === 0 ? (
+        <EmptyState
+          icon={ScrollText}
+          heading="No decisions match"
+          body="Adjust the filters above, or log your first decision via the SDK to populate the timeline."
+        />
+      ) : (
+        <div className="space-y-8">
+          {filteredRuns.map(({ run, decisions }) => (
+            <div key={run.id}>
+              <div className="mb-3 flex items-center gap-2 type-small text-ink-tertiary">
+                <span className="type-subheading text-ink-secondary">
+                  {run.agentName}
+                </span>
+                <span>·</span>
+                <span className="font-mono text-[12px]">run {run.id.slice(0, 8)}</span>
+                <span>·</span>
+                <span>{timeAgo(run.startedAt)}</span>
+              </div>
+              <div className="space-y-3">
+                {decisions.map((d) => (
+                  <DecisionCardFromDTO key={d.id} decision={d} run={run} />
+                ))}
+              </div>
+            </div>
           ))}
-        </ol>
+        </div>
       )}
     </div>
   );
 }
 
-function DecisionCard({ decision }: { decision: DecisionWithViolations }) {
-  const [contextOpen, setContextOpen] = useState(false);
-  const hasViolations = decision.violations.length > 0;
-  const isSupersession = decision.supersededById !== null;
+/** Adapt an export-shaped decision DTO into the design-system DecisionCard. */
+function DecisionCardFromDTO({
+  decision,
+  run,
+}: {
+  decision: ExportDecision;
+  run: ExportRun;
+}) {
+  const violations: DecisionCardViolation[] = decision.violations.map((v) => ({
+    id: v.id,
+    severity: v.severity as PolicyViolationSeverity,
+    policyName: v.policyRuleText,
+    explanation: v.violationExplanation,
+  }));
+  const original =
+    decision.supersededById != null
+      ? run.decisions.find((d) => d.id === decision.supersededById)
+      : undefined;
 
   return (
-    <li className="relative">
-      <span
-        className={cn(
-          "absolute -left-[31px] top-1.5 h-3.5 w-3.5 rounded-full border-2",
-          hasViolations
-            ? "border-destructive bg-destructive/20"
-            : isSupersession
-              ? "border-primary bg-primary/20"
-              : "border-border bg-card",
-        )}
+    <div id={`decision-${decision.id}`}>
+      <DecisionCard
+        decisionType={decision.decisionType}
+        content={decision.decisionContent}
+        timestamp={decision.decidedAt}
+        hash={decision.contentHash}
+        toolCalled={decision.toolCalled}
+        toolOutput={decision.toolOutput}
+        superseded={decision.supersededById !== null}
+        supersededAtIso={original?.decidedAt ?? decision.createdAt}
+        onNavigateToOriginal={
+          original
+            ? () =>
+                document
+                  .getElementById(`decision-${original.id}`)
+                  ?.scrollIntoView({ behavior: "smooth", block: "center" })
+            : undefined
+        }
+        violations={violations}
       />
-      <div
-        className={cn(
-          "rounded-lg border bg-card/40 p-4",
-          hasViolations
-            ? "border-destructive/40"
-            : isSupersession
-              ? "border-primary/30"
-              : "border-border/60",
-        )}
-      >
-        <div className="mb-2 flex items-baseline justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-primary">
-              {decision.decisionType}
-            </span>
-            {isSupersession && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-1.5 py-0 font-mono text-[9px] uppercase tracking-wider text-primary">
-                <GitBranch className="h-2.5 w-2.5" />
-                Supersedes prior
-              </span>
-            )}
-          </div>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
-            {timeAgo(decision.decidedAt)}
-          </span>
-        </div>
-        <p className="font-serif text-[15px] leading-snug">{decision.decisionContent}</p>
-
-        {decision.toolCalled && (
-          <p className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary/40 px-2 py-1 font-mono text-[10px] text-muted-foreground">
-            <Terminal className="h-3 w-3" />
-            tool: {decision.toolCalled}
-          </p>
-        )}
-
-        {hasViolations &&
-          decision.violations.map((v) => <ViolationCard key={v.id} v={v} />)}
-
-        <button
-          type="button"
-          onClick={() => setContextOpen((x) => !x)}
-          className="mt-3 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground"
-        >
-          <ChevronDown
-            className={cn("h-3 w-3 transition-transform", contextOpen && "rotate-180")}
-          />
-          {contextOpen ? "Hide" : "Show"} context · hash {decision.contentHash.slice(0, 12)}…
-        </button>
-        {contextOpen && (
-          <pre className="mt-2 overflow-auto rounded-md border border-border/60 bg-background/60 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
-            {JSON.stringify(decision.contextUsed, null, 2)}
-          </pre>
-        )}
-      </div>
-    </li>
-  );
-}
-
-function ViolationCard({ v }: { v: PolicyViolationDTO }) {
-  const severityClass: Record<PolicyViolationSeverity, string> = {
-    LOW: "border-amber-400/30 bg-amber-400/[0.04]",
-    MEDIUM: "border-amber-500/40 bg-amber-500/[0.05]",
-    HIGH: "border-destructive/40 bg-destructive/[0.05]",
-    CRITICAL: "border-destructive bg-destructive/10",
-  };
-  return (
-    <div className={cn("mt-3 rounded-md border p-3", severityClass[v.severity])}>
-      <div className="mb-1 flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-destructive">
-          <AlertOctagon className="h-3 w-3" />
-          Policy violation · {v.severity.toLowerCase()}
-        </span>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
-          {timeAgo(v.detectedAt)}
-        </span>
-      </div>
-      {v.policyRuleText && (
-        <p className="mb-1 font-serif text-[13px] italic text-muted-foreground">
-          “{v.policyRuleText}”
-        </p>
-      )}
-      <p className="text-[13px] leading-snug">{v.violationExplanation}</p>
     </div>
   );
 }
@@ -468,6 +668,7 @@ function ViolationCard({ v }: { v: PolicyViolationDTO }) {
 
 function PoliciesTab({ workspaceId }: { workspaceId: string }) {
   const [rules, setRules] = useState<PolicyRuleDTO[] | null>(null);
+  const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
   const [creating, setCreating] = useState(false);
 
@@ -484,7 +685,7 @@ function PoliciesTab({ workspaceId }: { workspaceId: string }) {
 
   async function create() {
     if (draft.trim().length < 8) {
-      toast.error("Rule needs to be at least 8 characters");
+      toast.error("Rule needs at least 8 characters");
       return;
     }
     setCreating(true);
@@ -496,6 +697,7 @@ function PoliciesTab({ workspaceId }: { workspaceId: string }) {
       });
       if (!res.ok) throw new Error("Could not create");
       setDraft("");
+      setAdding(false);
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not create");
@@ -523,93 +725,147 @@ function PoliciesTab({ workspaceId }: { workspaceId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <section className="rounded-lg border border-primary/25 bg-primary/[0.04] p-4">
-        <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-primary">
-          Add a new policy rule
-        </p>
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          rows={3}
-          placeholder="e.g. Never approve a transaction over $10,000 without human review."
-          className="w-full resize-none rounded-md border border-border/60 bg-background/60 px-3 py-2 font-serif text-[14px] leading-snug placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
-        />
-        <div className="mt-2 flex items-center justify-between">
-          <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground/70">
-            The engine matches every incoming decision against every active rule.
-          </p>
+    <div>
+      <PageHeader
+        title="Policies"
+        subtitle="Rules the engine checks against every incoming decision"
+        actions={
           <Button
             size="sm"
-            onClick={create}
-            disabled={creating || draft.trim().length < 8}
-            className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={() => setAdding((a) => !a)}
+            className="gap-1.5"
+            style={{ backgroundColor: "var(--accent-amber)", color: "var(--bg-base)" }}
           >
             <Plus className="h-3.5 w-3.5" />
-            Add rule
+            Add policy rule
           </Button>
-        </div>
-      </section>
+        }
+      />
 
-      {!rules && <LoadingBlock label="Loading rules" />}
-      {rules && rules.length === 0 && <EmptyBlock kind="POLICIES" />}
-      {rules && rules.length > 0 && (
-        <ul className="flex flex-col">
-          {rules.map((r) => (
-            <li
-              key={r.id}
-              className="grid grid-cols-[1fr_auto_auto] items-start gap-4 border-b border-border/60 py-4 last:border-b-0"
+      {adding && (
+        <div className="mb-6 rounded-card border border-hairline-subtle bg-surface p-4 animate-fade-in">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={2}
+            autoFocus
+            placeholder="Describe the rule in plain English… e.g. Never approve transactions over $10,000 without human review"
+            className="w-full resize-none rounded-field border border-hairline-subtle bg-surface-base px-3 py-2 type-body text-ink placeholder:text-ink-tertiary focus:border-amber-border focus:outline-none"
+          />
+          <div className="mt-2 flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setAdding(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={create}
+              disabled={creating || draft.trim().length < 8}
+              style={{ backgroundColor: "var(--accent-amber)", color: "var(--bg-base)" }}
             >
-              <div>
-                <p className={cn("font-serif text-[15px] leading-snug", !r.isActive && "text-muted-foreground line-through")}>
-                  {r.ruleText}
-                </p>
-                <p className="mt-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
-                  Created {timeAgo(r.createdAt)}
-                </p>
-              </div>
-              {r.violationCount !== undefined && r.violationCount > 0 ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-destructive">
-                  <AlertOctagon className="h-2.5 w-2.5" />
-                  {r.violationCount} caught
-                </span>
-              ) : (
-                <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/60">
-                  0 caught
-                </span>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 font-mono text-[10px] uppercase tracking-wider"
-                onClick={() => toggle(r.id, !r.isActive)}
-              >
-                {r.isActive ? <CheckCircle2 className="h-3 w-3 text-primary" /> : null}
-                {r.isActive ? "Active" : "Inactive"}
-              </Button>
-            </li>
-          ))}
-        </ul>
+              {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Add rule"}
+            </Button>
+          </div>
+        </div>
       )}
+
+      {rules === null ? (
+        <LoadingRow label="Loading rules" />
+      ) : rules.length === 0 ? (
+        <EmptyState
+          icon={Shield}
+          heading="No policy rules yet"
+          body="Add your first rule above. Plain English works — the engine handles semantic matching against every incoming decision."
+        />
+      ) : (
+        <div className="space-y-2">
+          {rules.map((rule) => (
+            <PolicyCard key={rule.id} rule={rule} onToggle={toggle} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PolicyCard({
+  rule,
+  onToggle,
+}: {
+  rule: PolicyRuleDTO;
+  onToggle: (id: string, next: boolean) => void;
+}) {
+  const caught = rule.violationCount ?? 0;
+  return (
+    <div className="rounded-card border border-hairline-subtle bg-surface p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <p
+            className={cn(
+              "type-body text-ink",
+              !rule.isActive && "text-ink-tertiary line-through",
+            )}
+          >
+            {rule.ruleText}
+          </p>
+          <div className="mt-2 flex items-center gap-3">
+            {caught > 0 ? (
+              <Badge variant="danger" size="sm">
+                {caught} caught
+              </Badge>
+            ) : (
+              <span className="type-micro text-ink-tertiary">0 caught</span>
+            )}
+            <span className="type-micro text-ink-tertiary">
+              Created {timeAgo(rule.createdAt)}
+            </span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onToggle(rule.id, !rule.isActive)}
+          className={cn(
+            "shrink-0 rounded-pill px-2.5 py-1 type-micro transition-colors",
+            rule.isActive
+              ? "text-ink"
+              : "text-ink-tertiary hover:text-ink-secondary",
+          )}
+          style={rule.isActive ? { backgroundColor: "var(--accent-amber-subtle)", color: "var(--accent-amber)" } : undefined}
+        >
+          {rule.isActive ? "Active" : "Inactive"}
+        </button>
+      </div>
     </div>
   );
 }
 
 /* ── Export tab ──────────────────────────────────────────────────── */
 
-function ExportTab({ workspaceId }: { workspaceId: string }) {
-  const [exporting, setExporting] = useState(false);
-  const [lastHash, setLastHash] = useState<string | null>(null);
+const EXPORT_INCLUDES = [
+  "All decisions",
+  "Supersession links",
+  "Policy violations",
+  "Content hashes",
+  "Agent metadata",
+];
 
-  async function download() {
+function ExportTab({
+  workspaceId,
+  workspaceName,
+}: {
+  workspaceId: string;
+  workspaceName: string;
+}) {
+  const [exporting, setExporting] = useState(false);
+  const [hash, setHash] = useState<string | null>(null);
+
+  async function generate() {
     setExporting(true);
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/audit-export`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const text = await res.text();
       const parsed = JSON.parse(text) as { exportHash?: string };
-      setLastHash(parsed.exportHash ?? null);
-
+      setHash(parsed.exportHash ?? null);
       const blob = new Blob([text], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -628,47 +884,87 @@ function ExportTab({ workspaceId }: { workspaceId: string }) {
   }
 
   return (
-    <div className="max-w-2xl">
-      <p className="mb-3 inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-primary">
-        <span className="h-px w-5 bg-primary/60" />
-        Compliance export
-      </p>
-      <h2 className="mb-3 font-serif text-2xl font-medium tracking-tight">
-        Hand this file to a compliance officer or regulator.
-      </h2>
-      <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
-        The export is a single JSON file containing every agent run, every
-        decision, every supersession link, and every policy violation in
-        this workspace. Each decision carries a chained <code className="font-mono text-[12px]">content_hash</code> so
-        an external auditor can verify that nothing was altered after the
-        fact — modifying or removing any row breaks every subsequent hash
-        in the chain.
-      </p>
+    <div>
+      <PageHeader
+        title="Audit Export"
+        subtitle="Generate a tamper-evident audit trail for regulatory compliance"
+      />
 
-      <Button
-        size="lg"
-        onClick={download}
-        disabled={exporting}
-        className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
-      >
-        {exporting ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Download className="h-4 w-4" />
-        )}
-        {exporting ? "Building export…" : "Export full audit trail"}
-      </Button>
+      <div className="mx-auto max-w-[480px]">
+        <div className="rounded-card border border-hairline-subtle bg-surface p-6">
+          <div className="flex items-center justify-between">
+            <span className="type-subheading text-ink">{workspaceName}</span>
+            <span className="type-small text-ink-tertiary">All time</span>
+          </div>
 
-      {lastHash && (
-        <div className="mt-6 rounded-md border border-border/60 bg-card/50 p-4">
-          <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-primary">
-            Last export hash · verify this matches the file
-          </p>
-          <p className="break-all font-mono text-[12px] text-foreground/85">
-            {lastHash}
-          </p>
+          <div className="mt-5 space-y-2.5">
+            <p className="type-micro text-ink-tertiary">Include</p>
+            {EXPORT_INCLUDES.map((item) => (
+              <div key={item} className="flex items-center gap-2.5">
+                <span
+                  className="flex h-4 w-4 items-center justify-center rounded-[4px]"
+                  style={{ backgroundColor: "var(--accent-amber-subtle)" }}
+                >
+                  <Check className="h-3 w-3" style={{ color: "var(--accent-amber)" }} />
+                </span>
+                <span className="type-body text-ink">{item}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5">
+            <p className="type-micro text-ink-tertiary">Export format</p>
+            <div className="mt-2 flex gap-2">
+              <span
+                className="rounded-field px-3 py-1.5 type-small"
+                style={{ backgroundColor: "var(--accent-amber-subtle)", color: "var(--accent-amber)" }}
+              >
+                JSON
+              </span>
+              <span className="rounded-field border border-hairline-subtle px-3 py-1.5 type-small text-ink-tertiary">
+                CSV (coming soon)
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={generate}
+            disabled={exporting}
+            className="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-field type-subheading transition-opacity hover:opacity-90 disabled:opacity-60"
+            style={{ backgroundColor: "var(--accent-amber)", color: "var(--bg-base)" }}
+          >
+            {exporting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Generating…
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" />
+                Generate export
+              </>
+            )}
+          </button>
+
+          {hash && (
+            <div className="mt-5 border-t border-hairline-subtle pt-4">
+              <p className="type-micro text-ink-tertiary">Verification hash</p>
+              <div className="mt-1.5">
+                <HashDisplay value={hash} />
+              </div>
+              <p className="mt-2 type-small text-ink-tertiary">
+                Share this hash with your auditor to verify integrity.
+              </p>
+            </div>
+          )}
         </div>
-      )}
+
+        <p className="mt-4 type-small text-ink-tertiary">
+          This export satisfies: Colorado AI Act documentation requirements ·
+          HIPAA §164.312(b) audit controls · SOC2 Type II evidence collection
+        </p>
+      </div>
     </div>
   );
 }
@@ -678,16 +974,16 @@ function ExportTab({ workspaceId }: { workspaceId: string }) {
 function KeysTab({ workspaceId }: { workspaceId: string }) {
   const [keys, setKeys] = useState<ApiKeyDTO[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [name, setName] = useState("");
-  const [creating, setCreating] = useState(false);
-  // The plaintext secret, held only in memory and only until the user
-  // dismisses the reveal modal. Never re-fetchable.
-  const [revealed, setRevealed] = useState<CreatedApiKeyDTO | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/api-keys`);
     if (!res.ok) {
-      setError(res.status === 403 ? "You don't have access to API keys for this workspace." : `HTTP ${res.status}`);
+      setError(
+        res.status === 403
+          ? "You don't have access to API keys for this workspace."
+          : `HTTP ${res.status}`,
+      );
       return;
     }
     const data = (await res.json()) as { apiKeys: ApiKeyDTO[] };
@@ -699,9 +995,141 @@ function KeysTab({ workspaceId }: { workspaceId: string }) {
     void refresh();
   }, [refresh]);
 
-  async function create() {
+  async function revoke(keyId: string, name: string) {
+    if (!window.confirm(`Revoke "${name}"? Any agent using it stops authenticating immediately.`))
+      return;
+    const prev = keys;
+    setKeys((ks) => (ks ? ks.filter((k) => k.id !== keyId) : ks));
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/api-keys/${keyId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Could not revoke");
+      toast.success("Key revoked");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not revoke");
+      setKeys(prev);
+    }
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="API Keys"
+        subtitle="Authenticate your agents with bearer tokens"
+        actions={
+          <Button
+            size="sm"
+            onClick={() => setModalOpen(true)}
+            className="gap-1.5"
+            style={{ backgroundColor: "var(--accent-amber)", color: "var(--bg-base)" }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Generate new key
+          </Button>
+        }
+      />
+
+      {error ? (
+        <div
+          className="rounded-card border-l-2 px-4 py-3 type-body"
+          style={{ borderColor: "var(--color-danger)", backgroundColor: "var(--color-danger-subtle)", color: "var(--color-danger)" }}
+        >
+          {error}
+        </div>
+      ) : keys === null ? (
+        <LoadingRow label="Loading keys" />
+      ) : keys.length === 0 ? (
+        <EmptyState
+          icon={KeyRound}
+          heading="No API keys yet"
+          body="Generate one to connect your first agent. Until then, the agent routes still accept a logged-in session."
+        />
+      ) : (
+        <div className="overflow-hidden rounded-card border border-hairline-subtle">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-hairline-subtle bg-surface">
+                <Th>Name</Th>
+                <Th>Prefix</Th>
+                <Th>Last used</Th>
+                <Th>Created</Th>
+                <Th align="right">Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {keys.map((k) => (
+                <tr key={k.id} className="border-b border-hairline-subtle last:border-b-0">
+                  <td className="px-4 py-3 type-body text-ink">{k.name}</td>
+                  <td className="px-4 py-3">
+                    <span className="font-mono text-[13px]" style={{ color: "var(--hash-color)" }}>
+                      {k.keyPrefix}…
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 type-small text-ink-secondary">
+                    {k.lastUsedAt ? (
+                      timeAgo(k.lastUsedAt)
+                    ) : (
+                      <span className="text-ink-tertiary">Never</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 type-small text-ink-secondary">
+                    {timeAgo(k.createdAt)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => revoke(k.id, k.name)}
+                      className="inline-flex items-center gap-1.5 rounded-field px-2 py-1 type-micro transition-colors hover:bg-danger-subtle"
+                      style={{ color: "var(--color-danger)" }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Revoke
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <GenerateKeyModal
+        workspaceId={workspaceId}
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onCreated={refresh}
+      />
+    </div>
+  );
+}
+
+function GenerateKeyModal({
+  workspaceId,
+  open,
+  onClose,
+  onCreated,
+}: {
+  workspaceId: string;
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [created, setCreated] = useState<CreatedApiKeyDTO | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  function reset() {
+    setName("");
+    setCreated(null);
+    setCopied(false);
+    onClose();
+  }
+
+  async function generate() {
     if (name.trim().length < 1) {
-      toast.error("Give the key a name so you can recognize it later");
+      toast.error("Give the key a name");
       return;
     }
     setCreating(true);
@@ -713,10 +1141,8 @@ function KeysTab({ workspaceId }: { workspaceId: string }) {
       });
       if (res.status === 403) throw new Error("Only a workspace owner can create API keys");
       if (!res.ok) throw new Error("Could not create key");
-      const created = (await res.json()) as CreatedApiKeyDTO;
-      setName("");
-      setRevealed(created);
-      await refresh();
+      setCreated((await res.json()) as CreatedApiKeyDTO);
+      onCreated();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not create key");
     } finally {
@@ -724,202 +1150,96 @@ function KeysTab({ workspaceId }: { workspaceId: string }) {
     }
   }
 
-  async function revoke(keyId: string, keyName: string) {
-    if (!window.confirm(`Revoke "${keyName}"? Any agent using it will stop authenticating immediately.`)) {
-      return;
-    }
-    const prev = keys;
-    setKeys((ks) => (ks ? ks.filter((k) => k.id !== keyId) : ks));
-    try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/api-keys/${keyId}`, {
-        method: "DELETE",
-      });
-      if (res.status === 403) throw new Error("Only a workspace owner can revoke API keys");
-      if (!res.ok) throw new Error("Could not revoke key");
-      toast.success("Key revoked");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not revoke key");
-      setKeys(prev);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-6">
-      <section className="max-w-2xl">
-        <p className="mb-3 inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-primary">
-          <span className="h-px w-5 bg-primary/60" />
-          Connect your agent
-        </p>
-        <h2 className="mb-2 font-serif text-2xl font-medium tracking-tight">
-          API keys for unattended agents.
-        </h2>
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          Pass a key as the <code className="font-mono text-[12px]">apiKey</code> to
-          the Mneme SDK and your agent logs decisions without a browser
-          session. Each key is scoped to this workspace, shown once at
-          creation, and revocable at any time.
-        </p>
-      </section>
-
-      <section className="max-w-2xl rounded-lg border border-primary/25 bg-primary/[0.04] p-4">
-        <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-primary">
-          Generate a new key
-        </p>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !creating) void create();
-            }}
-            maxLength={100}
-            placeholder="e.g. pricing-agent (prod)"
-            className="font-serif"
-          />
-          <Button
-            onClick={create}
-            disabled={creating || name.trim().length < 1}
-            className="shrink-0 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-            Generate key
-          </Button>
-        </div>
-        <p className="mt-2 font-mono text-[9px] uppercase tracking-wider text-muted-foreground/70">
-          The secret is shown exactly once. Owner-only.
-        </p>
-      </section>
-
-      {error && <ErrorBlock message={error} />}
-      {!keys && !error && <LoadingBlock label="Loading keys" />}
-      {keys && keys.length === 0 && !error && (
-        <div className="flex max-w-2xl flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 py-12 text-center">
-          <KeyRound className="h-7 w-7 text-muted-foreground/60" />
-          <p className="font-serif text-base font-medium">No API keys yet</p>
-          <p className="max-w-md text-xs text-muted-foreground">
-            Generate one above to connect your first agent. Until then, the
-            agent routes still accept a logged-in session.
-          </p>
-        </div>
-      )}
-      {keys && keys.length > 0 && (
-        <div className="max-w-2xl overflow-hidden rounded-lg border border-border/60">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/60 bg-card/30">
-                <Th>Name</Th>
-                <Th>Key</Th>
-                <Th>Last used</Th>
-                <Th />
-              </tr>
-            </thead>
-            <tbody>
-              {keys.map((k) => (
-                <tr key={k.id} className="border-b border-border/40 last:border-b-0">
-                  <td className="px-4 py-3">
-                    <p className="font-serif text-[15px] leading-tight">{k.name}</p>
-                    <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
-                      Created {timeAgo(k.createdAt)}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-[12px] text-muted-foreground">
-                    {k.keyPrefix}…
-                  </td>
-                  <td className="px-4 py-3 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
-                    {k.lastUsedAt ? timeAgo(k.lastUsedAt) : "never"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 gap-1.5 font-mono text-[10px] uppercase tracking-wider text-destructive hover:text-destructive"
-                      onClick={() => revoke(k.id, k.name)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      Revoke
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <RevealKeyModal created={revealed} onClose={() => setRevealed(null)} />
-    </div>
-  );
-}
-
-function RevealKeyModal({
-  created,
-  onClose,
-}: {
-  created: CreatedApiKeyDTO | null;
-  onClose: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-
   async function copy() {
     if (!created) return;
     try {
       await navigator.clipboard.writeText(created.plaintext);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 1500);
     } catch {
       toast.error("Couldn't copy — select the key and copy manually");
     }
   }
 
   return (
-    <Dialog
-      open={created !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 font-serif">
-            <KeyRound className="h-4 w-4 text-primary" />
-            {created?.apiKey.name}
-          </DialogTitle>
-          <DialogDescription>
-            Copy this key now — it will never be shown again. Store it in your
-            agent&apos;s environment as{" "}
-            <code className="font-mono text-[12px]">MNEME_API_KEY</code>.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-background/60 p-3">
-          <code className="flex-1 break-all font-mono text-[12px] text-foreground/90">
-            {created?.plaintext}
-          </code>
-          <Button
-            size="sm"
-            variant="outline"
-            className="shrink-0 gap-1.5 font-mono text-[10px] uppercase tracking-wider"
-            onClick={copy}
-          >
-            {copied ? <Check className="h-3 w-3 text-primary" /> : <Copy className="h-3 w-3" />}
-            {copied ? "Copied" : "Copy"}
-          </Button>
-        </div>
-
-        <div className="flex justify-end">
-          <Button
-            onClick={onClose}
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            I&apos;ve copied it
-          </Button>
-        </div>
+    <Dialog open={open} onOpenChange={(o) => !o && reset()}>
+      <DialogContent className="max-w-md rounded-modal border-hairline-subtle bg-surface">
+        {!created ? (
+          <>
+            <DialogHeader>
+              <DialogTitle className="type-heading text-ink">
+                Generate API key
+              </DialogTitle>
+              <DialogDescription className="type-body text-ink-secondary">
+                Scoped to this workspace. The secret is shown once.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !creating && generate()}
+              placeholder="production-agent"
+              autoFocus
+              className="border-hairline-subtle bg-surface-base"
+            />
+            <button
+              type="button"
+              onClick={generate}
+              disabled={creating || name.trim().length < 1}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-field type-subheading transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ backgroundColor: "var(--accent-amber)", color: "var(--bg-base)" }}
+            >
+              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Generate"}
+            </button>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle className="type-heading text-ink">
+                {created.apiKey.name}
+              </DialogTitle>
+            </DialogHeader>
+            <div
+              className="rounded-field border-l-2 px-3 py-2 type-small"
+              style={{
+                borderColor: "var(--accent-amber)",
+                backgroundColor: "var(--accent-amber-subtle)",
+                color: "var(--accent-amber)",
+              }}
+            >
+              This key will never be shown again. Copy it now.
+            </div>
+            <div className="flex items-center gap-2 rounded-field border border-hairline-subtle bg-surface-base p-3">
+              <code
+                className="flex-1 break-all font-mono text-[13px]"
+                style={{ color: "var(--hash-color)" }}
+              >
+                {created.plaintext}
+              </code>
+              <button
+                type="button"
+                onClick={copy}
+                className="shrink-0 rounded-field border border-hairline-subtle px-2 py-1 type-micro text-ink-secondary transition-colors hover:text-ink"
+              >
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={reset}
+              className="h-9 w-full rounded-field type-subheading transition-opacity hover:opacity-90"
+              style={{ backgroundColor: "var(--accent-amber)", color: "var(--bg-base)" }}
+            >
+              I&apos;ve copied it
+            </button>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-/* ── Shared parts ────────────────────────────────────────────────── */
+/* ── Shared bits ─────────────────────────────────────────────────── */
 
 function Th({
   children,
@@ -931,8 +1251,8 @@ function Th({
   return (
     <th
       className={cn(
-        "px-4 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70",
-        align === "right" && "text-right",
+        "px-4 py-2.5 type-micro text-ink-tertiary",
+        align === "right" ? "text-right" : "text-left",
       )}
     >
       {children}
@@ -940,61 +1260,71 @@ function Th({
   );
 }
 
-function LoadingBlock({ label }: { label: string }) {
+function StatusChip({ status }: { status: AgentRunDTO["status"] }) {
+  if (status === "RUNNING") {
+    return (
+      <span className="inline-flex items-center gap-1.5 type-micro" style={{ color: "var(--color-success)" }}>
+        <RunningIndicator />
+        running
+      </span>
+    );
+  }
+  const tone: Record<string, string> = {
+    COMPLETED: "var(--color-success)",
+    FAILED: "var(--color-danger)",
+    CANCELLED: "var(--text-tertiary)",
+  };
   return (
-    <div className="flex items-center gap-2 py-10 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-      <Loader2 className="h-3 w-3 animate-spin" />
+    <span className="type-micro" style={{ color: tone[status] ?? "var(--text-secondary)" }}>
+      {status.toLowerCase()}
+    </span>
+  );
+}
+
+function RunningIndicator() {
+  return (
+    <span
+      className="inline-block h-1.5 w-1.5 rounded-full animate-running-dot"
+      style={{ backgroundColor: "var(--color-success)" }}
+    />
+  );
+}
+
+function FilterChips<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: Array<[T, string]>;
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-field border border-hairline-subtle p-0.5">
+      {options.map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          className={cn(
+            "rounded-[5px] px-2.5 py-1 type-small transition-colors",
+            value === key
+              ? "bg-surface-elevated text-ink"
+              : "text-ink-tertiary hover:text-ink-secondary",
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LoadingRow({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 py-12 type-small text-ink-tertiary">
+      <Loader2 className="h-3.5 w-3.5 animate-spin" />
       {label}
     </div>
   );
-}
-
-function ErrorBlock({ message }: { message: string }) {
-  return (
-    <div className="rounded-md border border-destructive/30 bg-destructive/[0.05] px-4 py-3 text-sm text-destructive">
-      {message}
-    </div>
-  );
-}
-
-function EmptyBlock({ kind }: { kind: "RUNS" | "DECISIONS" | "POLICIES" }) {
-  const copy: Record<typeof kind, { title: string; body: string; icon: React.ComponentType<{ className?: string }> }> = {
-    RUNS: {
-      title: "No agent runs yet",
-      body: "Once your agents start logging decisions via the SDK, every run shows up here with its decision count and violation badges.",
-      icon: Terminal,
-    },
-    DECISIONS: {
-      title: "No decisions in this run",
-      body: "Open the SDK quickstart in the README to log your first agent decision.",
-      icon: ScrollText,
-    },
-    POLICIES: {
-      title: "No policy rules yet",
-      body: "Add your first rule above. Plain English works — the engine handles semantic matching against every incoming decision.",
-      icon: Shield,
-    },
-  };
-  const { title, body, icon: Icon } = copy[kind];
-  return (
-    <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-      <Icon className="h-7 w-7 text-muted-foreground/60" />
-      <p className="font-serif text-base font-medium">{title}</p>
-      <p className="max-w-md text-xs text-muted-foreground">{body}</p>
-    </div>
-  );
-}
-
-function timeAgo(iso: string): string {
-  const then = new Date(iso).getTime();
-  const seconds = Math.floor((Date.now() - then) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
 }

@@ -61,7 +61,7 @@ function EmptyState() {
 
   return (
     <div className="flex flex-col items-center justify-center gap-6 px-6 py-16 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/30">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/30">
         <BrainCircuit className="h-7 w-7" />
       </div>
       <div>
@@ -103,7 +103,7 @@ function SuggestionButton({ text }: { text: string }) {
     <button
       type="button"
       onClick={fill}
-      className="rounded-lg border border-border/60 bg-card/30 px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:border-violet-500/40 hover:bg-card/60 hover:text-foreground"
+      className="rounded-lg border border-border/60 bg-card/30 px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:bg-card/60 hover:text-foreground"
     >
       {text}
     </button>

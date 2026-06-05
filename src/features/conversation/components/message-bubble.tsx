@@ -46,7 +46,7 @@ export function MessageBubble({ message }: { message: MessageDTO }) {
       )}
     >
       {isAssistant ? (
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/30">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/30">
           <BrainCircuit className="h-3.5 w-3.5" />
         </div>
       ) : (

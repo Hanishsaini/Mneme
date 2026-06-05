@@ -54,7 +54,7 @@ export function Markdown({
           ),
           li: ({ children }) => <li className="leading-relaxed">{children}</li>,
           blockquote: ({ children }) => (
-            <blockquote className="my-2 border-l-2 border-violet-500/40 pl-3 italic text-muted-foreground">
+            <blockquote className="my-2 border-l-2 border-primary/40 pl-3 italic text-muted-foreground">
               {children}
             </blockquote>
           ),
@@ -63,7 +63,7 @@ export function Markdown({
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-violet-300 underline underline-offset-2 hover:text-violet-200"
+              className="text-primary underline underline-offset-2 hover:text-primary"
             >
               {children}
             </a>

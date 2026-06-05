@@ -40,6 +40,19 @@ export function findPrimaryCanvas(workspaceId: string) {
   });
 }
 
+export function renameWorkspace(workspaceId: string, name: string) {
+  return prisma.workspace.update({
+    where: { id: workspaceId },
+    data: { name },
+  });
+}
+
+/** Hard delete. Every workspace-owned row cascades via the schema's
+ *  onDelete: Cascade FKs (members, conversations, runs, keys, …). */
+export function deleteWorkspace(workspaceId: string) {
+  return prisma.workspace.delete({ where: { id: workspaceId } });
+}
+
 export function createWorkspaceWithDefaults(input: {
   name: string;
   ownerId: string;
