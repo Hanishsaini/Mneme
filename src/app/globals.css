@@ -37,8 +37,8 @@
 
     /* Text */
     --text-primary: #f0f0f2;
-    --text-secondary: #8b8b99;
-    --text-tertiary: #55555f;
+    --text-secondary: #a1a3b0;
+    --text-tertiary: #6b6b78;
     --text-disabled: #3a3a42;
 
     /* Brand accent — amber */
@@ -83,7 +83,7 @@
     --secondary: 240 9% 11%; /* bg-elevated */
     --secondary-foreground: 240 11% 95%;
     --muted: 240 6% 9%;
-    --muted-foreground: 240 8% 57%; /* text-secondary */
+    --muted-foreground: 240 8% 66%; /* text-secondary (brighter for legibility) */
     --accent: 240 9% 15%; /* bg-overlay */
     --accent-foreground: 240 11% 95%;
     --destructive: 0 84% 60%; /* color-danger */

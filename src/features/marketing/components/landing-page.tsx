@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Check,
   GitBranch,
   ListChecks,
   Lock,
@@ -15,11 +16,10 @@ import { Badge, CodeBlock } from "@/components/design";
 import { cn } from "@/lib/utils";
 
 /**
- * Public landing. Dark, precise, one accent. The hero's right column runs a
- * forever-looping demo of the product working — three decision cards stack
- * in, a supersession callout slides onto the middle card, a HIGH violation
- * badge pulses onto the bottom card — so a visitor understands the product
- * in 8 seconds without reading a word.
+ * Public landing — "bold & alive". Dark, but with presence: a real amber
+ * glow, a heavy headline that leads with the stakes, and a big center-stage
+ * demo of the product working (decision cards stack in → amber supersession
+ * callout → red HIGH violation, forever). Sections reveal on scroll.
  */
 export function LandingPage() {
   return (
@@ -33,63 +33,130 @@ export function LandingPage() {
   );
 }
 
+/* ── Scroll reveal ─────────────────────────────────────────────────── */
+
+function Reveal({
+  children,
+  delay = 0,
+  className,
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  className?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setShown(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.15 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "transition-all duration-700 ease-out",
+        shown ? "translate-y-0 opacity-100" : "translate-y-5 opacity-0",
+        className,
+      )}
+      style={{ transitionDelay: `${delay}ms` }}
+    >
+      {children}
+    </div>
+  );
+}
+
 /* ── Section 1 — Hero ──────────────────────────────────────────────── */
 
 function Hero() {
   return (
-    <section className="hero-radial relative">
-      <div className="mx-auto grid max-w-6xl gap-16 px-6 py-24 lg:grid-cols-[3fr_2fr] lg:py-32">
-        <div className="flex flex-col justify-center">
-          <p
-            className="type-micro"
-            style={{ color: "var(--accent-amber)", letterSpacing: "0.1em" }}
+    <section className="relative overflow-hidden">
+      {/* Big amber glow — the brand actually registers now. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[640px]"
+        style={{
+          background:
+            "radial-gradient(ellipse 70% 55% at 50% -8%, rgba(245,158,11,0.18), transparent 70%)",
+        }}
+      />
+
+      <div className="mx-auto max-w-4xl px-6 pb-14 pt-24 text-center sm:pt-28">
+        <p
+          className="type-micro"
+          style={{ color: "var(--accent-amber)", letterSpacing: "0.12em" }}
+        >
+          Agent audit infrastructure
+        </p>
+
+        <h1 className="mx-auto mt-5 max-w-3xl text-[clamp(40px,7vw,64px)] font-semibold leading-[1.05] tracking-[-0.03em] text-ink">
+          Prove what your{" "}
+          <span style={{ color: "var(--accent-amber)" }}>agents</span> decided.
+        </h1>
+
+        <p className="mx-auto mt-6 max-w-2xl text-[17px] leading-relaxed text-ink-secondary">
+          When a regulator asks why your AI made a call, logs aren&apos;t
+          enough. Mneme captures every agent decision, flags every
+          contradiction, and exports a tamper-evident trail — hashed, chained,
+          and ready for audit.
+        </p>
+
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href="/register"
+            className="inline-flex h-11 items-center justify-center rounded-field px-5 text-[15px] font-medium shadow-elev2 transition-all hover:opacity-90 hover:shadow-elev3"
+            style={{ backgroundColor: "var(--accent-amber)", color: "var(--bg-base)" }}
           >
-            Agent audit infrastructure
-          </p>
-          <h1 className="mt-4 text-[40px] font-medium leading-[1.1] tracking-[-0.03em] text-ink sm:text-[48px]">
-            Every agent decision.
-            <br />
-            Logged. <span style={{ color: "var(--accent-amber)" }}>Proven.</span>{" "}
-            Auditable.
-          </h1>
-          <p className="mt-6 max-w-[480px] text-[16px] leading-relaxed text-ink-secondary">
-            AI agents are making consequential decisions right now. When a
-            regulator asks why — you need proof. Mneme captures every decision,
-            flags contradictions, and exports a tamper-evident audit trail.
-          </p>
-
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Link
-              href="/register"
-              className="inline-flex h-10 items-center justify-center rounded-field px-4 text-[14px] font-medium transition-opacity hover:opacity-90"
-              style={{ backgroundColor: "var(--accent-amber)", color: "var(--bg-base)" }}
-            >
-              Start auditing free
-            </Link>
-            <Link
-              href="#integrate"
-              className="inline-flex h-10 items-center justify-center rounded-field border border-hairline px-4 text-[14px] font-medium text-ink transition-colors hover:bg-surface-elevated"
-            >
-              View docs
-            </Link>
-          </div>
-
-          <div className="mt-6 flex flex-wrap gap-2">
-            {["Colorado AI Act Jun 2026", "HIPAA §164.312(b)", "SOC2 Type II"].map(
-              (chip) => (
-                <span
-                  key={chip}
-                  className="rounded-pill border border-hairline-subtle px-2.5 py-1 type-small text-ink-tertiary"
-                >
-                  {chip}
-                </span>
-              ),
-            )}
-          </div>
+            Start auditing free
+          </Link>
+          <Link
+            href="#integrate"
+            className="inline-flex h-11 items-center justify-center rounded-field border border-hairline px-5 text-[15px] font-medium text-ink transition-colors hover:bg-surface-elevated"
+          >
+            View docs
+          </Link>
         </div>
 
-        <div className="flex items-center justify-center">
-          <DemoFeed />
+        {/* Capability trust line — honest, capability-based, no fake metrics. */}
+        <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+          {[
+            "SHA-256 chained",
+            "Real-time policy checks",
+            "One-click audit export",
+          ].map((t) => (
+            <span
+              key={t}
+              className="inline-flex items-center gap-1.5 type-small text-ink-secondary"
+            >
+              <Check className="h-3.5 w-3.5" style={{ color: "var(--accent-amber)" }} />
+              {t}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Center-stage demo. */}
+      <div className="mx-auto max-w-2xl px-6 pb-24">
+        <DemoPanel />
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2 type-small text-ink-tertiary">
+          <span>Drops into</span>
+          {["LangChain", "CrewAI", "AutoGen", "LlamaIndex"].map((f) => (
+            <span
+              key={f}
+              className="rounded-pill border border-hairline-subtle px-2.5 py-0.5 text-ink-secondary"
+            >
+              {f}
+            </span>
+          ))}
         </div>
       </div>
     </section>
@@ -97,6 +164,38 @@ function Hero() {
 }
 
 /* ── The auto-playing demo ─────────────────────────────────────────── */
+
+function DemoPanel() {
+  return (
+    <div className="relative mx-auto max-w-[540px]">
+      {/* Glow behind the panel. */}
+      <div
+        className="pointer-events-none absolute -inset-10 -z-10"
+        style={{
+          background:
+            "radial-gradient(closest-side, rgba(245,158,11,0.16), transparent)",
+        }}
+      />
+      <div className="overflow-hidden rounded-modal border border-hairline bg-surface/80 shadow-elev3 backdrop-blur">
+        <div className="flex items-center gap-2 border-b border-hairline-subtle px-4 py-2.5">
+          <span
+            className="inline-block h-1.5 w-1.5 rounded-full animate-running-dot"
+            style={{ backgroundColor: "var(--color-success)" }}
+          />
+          <span className="type-micro text-ink-secondary">
+            live · pricing-agent v1.2.0
+          </span>
+          <span className="ml-auto type-micro text-ink-tertiary">
+            decision feed
+          </span>
+        </div>
+        <div className="p-4">
+          <DemoFeed />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const DEMO_CARDS = [
   {
@@ -116,8 +215,6 @@ const DEMO_CARDS = [
   },
 ];
 
-/** Loop length 5500ms (matches the frame spec). A parent key bump restarts
- *  the whole sequence so it runs forever with no interaction. */
 function DemoFeed() {
   const [cycle, setCycle] = useState(0);
   useEffect(() => {
@@ -146,7 +243,7 @@ function DemoSequence() {
   return (
     <div
       className={cn(
-        "w-full max-w-[380px] space-y-3 transition-opacity duration-500",
+        "space-y-3 transition-opacity duration-500",
         fadingOut ? "opacity-0" : "opacity-100",
       )}
     >
@@ -217,7 +314,7 @@ function DemoCard({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-card border border-hairline-subtle bg-surface shadow-elev1">
+    <div className="relative overflow-hidden rounded-card border border-hairline-subtle bg-surface-elevated shadow-elev1">
       <span
         className="absolute inset-y-0 left-0 w-0.5"
         style={{
@@ -225,7 +322,7 @@ function DemoCard({
             ? "var(--accent-amber)"
             : violated
               ? "var(--color-danger)"
-              : "var(--border-subtle)",
+              : "var(--border-default)",
         }}
       />
       <div className="py-3 pl-4 pr-3">
@@ -273,20 +370,27 @@ function Primitives() {
   return (
     <section className="border-t border-hairline-subtle">
       <div className="mx-auto max-w-6xl px-6 py-24">
-        <p className="type-micro text-ink-tertiary">How it works</p>
+        <Reveal>
+          <p className="type-micro text-ink-tertiary">How it works</p>
+        </Reveal>
         <div className="mt-10 grid gap-12 md:grid-cols-3">
-          {items.map((item) => {
+          {items.map((item, i) => {
             const Icon = item.icon;
             return (
-              <div key={item.heading}>
-                <Icon
-                  className="h-6 w-6"
-                  strokeWidth={1.5}
-                  style={{ color: "var(--accent-amber)" }}
-                />
+              <Reveal key={item.heading} delay={i * 100}>
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-card"
+                  style={{ backgroundColor: "var(--accent-amber-subtle)" }}
+                >
+                  <Icon
+                    className="h-5 w-5"
+                    strokeWidth={1.75}
+                    style={{ color: "var(--accent-amber)" }}
+                  />
+                </div>
                 <h3 className="mt-4 type-heading text-ink">{item.heading}</h3>
                 <p className="mt-2 type-body text-ink-secondary">{item.body}</p>
-              </div>
+              </Reveal>
             );
           })}
         </div>
@@ -328,31 +432,34 @@ function Integration() {
   return (
     <section id="integrate" className="border-t border-hairline-subtle">
       <div className="mx-auto max-w-3xl px-6 py-24">
-        <p className="type-micro text-ink-tertiary">Integrate in 10 minutes</p>
-        <div className="mb-4 mt-6 inline-flex rounded-field border border-hairline-subtle p-0.5">
-          {(["ts", "py"] as const).map((l) => (
-            <button
-              key={l}
-              type="button"
-              onClick={() => setLang(l)}
-              className={cn(
-                "rounded-[5px] px-3 py-1 type-small transition-colors",
-                lang === l
-                  ? "bg-surface-elevated text-ink"
-                  : "text-ink-tertiary hover:text-ink",
-              )}
-            >
-              {l === "ts" ? "TypeScript" : "Python"}
-            </button>
-          ))}
-        </div>
-        <CodeBlock
-          language={lang === "ts" ? "typescript" : "python"}
-          code={lang === "ts" ? TS_CODE : PY_CODE}
-        />
-        <p className="mt-4 type-small text-ink-tertiary">
-          Works with LangChain · CrewAI · AutoGen · any agent framework
-        </p>
+        <Reveal>
+          <p className="type-micro text-ink-tertiary">Integrate in 10 minutes</p>
+          <h2 className="mt-3 type-display text-ink">Three calls. Any framework.</h2>
+          <div className="mb-4 mt-6 inline-flex rounded-field border border-hairline-subtle p-0.5">
+            {(["ts", "py"] as const).map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => setLang(l)}
+                className={cn(
+                  "rounded-[5px] px-3 py-1 type-small transition-colors",
+                  lang === l
+                    ? "bg-surface-elevated text-ink"
+                    : "text-ink-tertiary hover:text-ink",
+                )}
+              >
+                {l === "ts" ? "TypeScript" : "Python"}
+              </button>
+            ))}
+          </div>
+          <CodeBlock
+            language={lang === "ts" ? "typescript" : "python"}
+            code={lang === "ts" ? TS_CODE : PY_CODE}
+          />
+          <p className="mt-4 type-small text-ink-tertiary">
+            Works with LangChain · CrewAI · AutoGen · any agent framework
+          </p>
+        </Reveal>
       </div>
     </section>
   );
@@ -381,23 +488,24 @@ function Compliance() {
   return (
     <section className="border-t border-hairline-subtle">
       <div className="mx-auto max-w-6xl px-6 py-24">
-        <p className="type-micro text-ink-tertiary">Built for the audit</p>
+        <Reveal>
+          <p className="type-micro text-ink-tertiary">Built for the audit</p>
+        </Reveal>
         <div className="mt-10 grid gap-4 md:grid-cols-3">
-          {cards.map((card) => {
+          {cards.map((card, i) => {
             const Icon = card.icon;
             return (
-              <div
-                key={card.title}
-                className="rounded-card border border-hairline-subtle bg-surface p-5"
-              >
-                <Icon
-                  className="h-5 w-5"
-                  strokeWidth={1.5}
-                  style={{ color: "var(--accent-amber)" }}
-                />
-                <h3 className="mt-4 type-subheading text-ink">{card.title}</h3>
-                <p className="mt-2 type-body text-ink-secondary">{card.body}</p>
-              </div>
+              <Reveal key={card.title} delay={i * 100}>
+                <div className="h-full rounded-card border border-hairline-subtle bg-surface p-5 transition-colors hover:border-amber-border">
+                  <Icon
+                    className="h-5 w-5"
+                    strokeWidth={1.5}
+                    style={{ color: "var(--accent-amber)" }}
+                  />
+                  <h3 className="mt-4 type-subheading text-ink">{card.title}</h3>
+                  <p className="mt-2 type-body text-ink-secondary">{card.body}</p>
+                </div>
+              </Reveal>
             );
           })}
         </div>
@@ -410,23 +518,32 @@ function Compliance() {
 
 function FooterCta() {
   return (
-    <section className="border-t border-hairline-subtle">
+    <section className="relative overflow-hidden border-t border-hairline-subtle">
+      <div
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          background:
+            "radial-gradient(ellipse 60% 70% at 50% 120%, rgba(245,158,11,0.14), transparent 70%)",
+        }}
+      />
       <div className="mx-auto max-w-3xl px-6 py-28 text-center">
-        <h2 className="text-[32px] font-medium leading-tight tracking-[-0.02em] text-ink">
-          Your agents are already making decisions.
-          <br />
-          Are you watching?
-        </h2>
-        <div className="mt-8 flex justify-center">
-          <Link
-            href="/register"
-            className="inline-flex h-10 items-center justify-center gap-1.5 rounded-field px-5 text-[14px] font-medium transition-opacity hover:opacity-90"
-            style={{ backgroundColor: "var(--accent-amber)", color: "var(--bg-base)" }}
-          >
-            Start auditing free
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
+        <Reveal>
+          <h2 className="text-[clamp(28px,5vw,40px)] font-semibold leading-tight tracking-[-0.02em] text-ink">
+            Your agents are already making decisions.
+            <br />
+            Are you watching?
+          </h2>
+          <div className="mt-8 flex justify-center">
+            <Link
+              href="/register"
+              className="inline-flex h-11 items-center justify-center gap-1.5 rounded-field px-6 text-[15px] font-medium shadow-elev2 transition-all hover:opacity-90 hover:shadow-elev3"
+              style={{ backgroundColor: "var(--accent-amber)", color: "var(--bg-base)" }}
+            >
+              Start auditing free
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </Reveal>
       </div>
     </section>
   );
