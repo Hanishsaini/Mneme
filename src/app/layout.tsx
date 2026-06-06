@@ -31,6 +31,15 @@ export const metadata: Metadata = {
   description: APP_TAGLINE,
 };
 
+// Force dynamic rendering for the whole tree. The root layout mounts
+// next-auth's <SessionProvider>, whose client constructs `new URL('')`
+// when there's no request-time base URL — which is exactly the case
+// during static prerender of /_not-found, crashing `next build` with
+// ERR_INVALID_URL. Opting the tree out of static generation sidesteps it;
+// every route here is session/data-driven and was never statically
+// cacheable anyway, so there's no perf regression.
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: {
