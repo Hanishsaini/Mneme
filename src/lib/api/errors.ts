@@ -5,6 +5,9 @@ export class ApiError extends Error {
     public status: number,
     message: string,
     public code: string,
+    /** Extra response headers to set on the error response (e.g.
+     *  `Retry-After` on a 429). Applied by `toErrorResponse`. */
+    public headers?: Record<string, string>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -19,8 +22,17 @@ export const Errors = {
   badRequest: (message = "Bad request") =>
     new ApiError(400, message, "BAD_REQUEST"),
   conflict: (message = "Conflict") => new ApiError(409, message, "CONFLICT"),
-  rateLimited: () =>
-    new ApiError(429, "Too many requests", "RATE_LIMITED"),
+  /** 429. Pass `retryAfterSeconds` to emit a `Retry-After` header so a
+   *  well-behaved client knows exactly when to retry. */
+  rateLimited: (retryAfterSeconds?: number) =>
+    new ApiError(
+      429,
+      "Too many requests",
+      "RATE_LIMITED",
+      retryAfterSeconds != null
+        ? { "Retry-After": String(Math.max(1, Math.ceil(retryAfterSeconds))) }
+        : undefined,
+    ),
   internal: () =>
     new ApiError(500, "Internal server error", "INTERNAL"),
 };

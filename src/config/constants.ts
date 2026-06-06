@@ -26,6 +26,15 @@ export const AI_SUMMARY_INTERVAL = 16;
 export const AI_RATE_LIMIT_MAX = 20;
 export const AI_RATE_LIMIT_WINDOW_SECONDS = 60;
 
+/**
+ * Agent decision ingestion throttle. Each POST /agent-runs/:id/decisions runs
+ * two LLM calls (supersession + policy) plus an embedding, so an abused or
+ * leaked API key could burn quota fast. Cap per principal (API key or member)
+ * at this many ingests per window.
+ */
+export const DECISION_INGEST_RATE_LIMIT_MAX = 60;
+export const DECISION_INGEST_RATE_LIMIT_WINDOW_SECONDS = 60;
+
 /** A conversation lock auto-expires after this many seconds (deadlock guard). */
 export const CONVERSATION_LOCK_TTL_SECONDS = 120;
 

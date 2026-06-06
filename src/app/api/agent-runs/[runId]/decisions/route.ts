@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { withAgentAuth, requireWorkspace } from "@/lib/api/agent-handler";
 import { Errors } from "@/lib/api/errors";
+import { checkDecisionIngestRateLimit } from "@/lib/redis/ratelimit";
 import { findAgentRun } from "@/features/agent-audit/server/agent-runs.repository";
 import { ingestDecision } from "@/features/agent-audit/server/decision-ingestion.service";
 import { listDecisionsForRun } from "@/features/agent-audit/server/decision-events.repository";
@@ -36,6 +37,13 @@ const ingestBodySchema = z.object({
 export const POST = withAgentAuth(
   { paramsSchema, bodySchema: ingestBodySchema },
   async ({ principal, params, body }) => {
+    // Throttle before any DB/LLM work. Key on the API key when an unattended
+    // agent is ingesting (the real cost/DoS vector), otherwise the member.
+    const principalId =
+      principal.kind === "apiKey" ? principal.apiKeyId : principal.user.id;
+    const limit = await checkDecisionIngestRateLimit(principalId);
+    if (!limit.allowed) throw Errors.rateLimited(limit.resetSeconds);
+
     const run = await findAgentRun(params.runId);
     if (!run) throw Errors.notFound("Agent run");
     await requireWorkspace(principal, run.workspaceId, "EDITOR");

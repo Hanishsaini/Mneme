@@ -70,7 +70,7 @@ export function toErrorResponse(err: unknown): NextResponse {
   if (err instanceof ApiError) {
     return NextResponse.json(
       { error: err.message, code: err.code },
-      { status: err.status },
+      { status: err.status, headers: err.headers },
     );
   }
   if (err instanceof ZodError) {

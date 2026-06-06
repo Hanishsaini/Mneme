@@ -6,4 +6,8 @@ export const redisKeys = {
     `lock:conversation:${conversationId}`,
   messageSeq: (conversationId: string) => `seq:conversation:${conversationId}`,
   rateLimit: (userId: string) => `ratelimit:ai:${userId}`,
+  /** Per-principal throttle for agent decision ingestion. `principalId` is
+   *  the API key id (unattended agent) or the member's user id. */
+  decisionIngestLimit: (principalId: string) =>
+    `ratelimit:ingest:${principalId}`,
 };
