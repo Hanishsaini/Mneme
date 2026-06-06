@@ -45,22 +45,11 @@ enum AiRunStatus {
   ERROR
 }
 
-enum CanvasType {
-  NOTES
-  CANVAS
-}
-
 enum MemoryItemKind {
   DECISION
   QUESTION
   ACTION_ITEM
   CONTEXT
-}
-
-enum PresenceStatus {
-  ONLINE
-  AWAY
-  OFFLINE
 }
 
 // ─── Agent audit primitives (the pivot) ──────────────────────────────────
@@ -113,7 +102,6 @@ model User {
   memberships     WorkspaceMember[]
   messages        Message[]
   ownedWorkspaces Workspace[]       @relation("WorkspaceOwner")
-  presence        PresenceState[]
   invitesSent     WorkspaceInvite[] @relation("InvitesSent")
   invitesUsed     WorkspaceInvite[] @relation("InvitesUsed")
   // Team memory back-refs
@@ -183,8 +171,6 @@ model Workspace {
   owner         User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
   members       WorkspaceMember[]
   conversations Conversation[]
-  canvases      CanvasDocument[]
-  presence      PresenceState[]
   invites       WorkspaceInvite[]
   embeddings    Embedding[]
   memoryItems   MemoryItem[]
@@ -388,65 +374,6 @@ model AiRun {
 
   @@index([conversationId, startedAt])
   @@index([status])
-}
-
-// ─── Shared canvas / notes ────────────────────────────────────────────────
-
-/// Materialized snapshot + version. The snapshot is a periodic compaction of
-/// the op log so clients don't replay the full history on load.
-model CanvasDocument {
-  id          String     @id @default(cuid())
-  workspaceId String
-  type        CanvasType @default(NOTES)
-  snapshot    Json       @default("{}")
-  version     Int        @default(0)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-
-  workspace  Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  operations CanvasOperation[]
-
-  @@index([workspaceId])
-}
-
-/// Append-only op log. `serverSeq` orders ops within a document and doubles
-/// as the catch-up cursor.
-model CanvasOperation {
-  id               String   @id @default(cuid())
-  canvasDocumentId String
-  actorId          String
-  serverSeq        Int
-  op               Json
-  createdAt        DateTime @default(now())
-
-  document CanvasDocument @relation(fields: [canvasDocumentId], references: [id], onDelete: Cascade)
-
-  @@unique([canvasDocumentId, serverSeq])
-  @@index([canvasDocumentId, serverSeq])
-  @@index([actorId])
-}
-
-// ─── Presence ─────────────────────────────────────────────────────────────
-
-/// Durable presence. Redis remains the live, high-churn broadcast layer;
-/// this table is the persistent fallback — "last active 2h ago" when a
-/// member is offline, plus a recovery source if Redis is flushed. Written
-/// on connect/disconnect transitions, NOT on every heartbeat or cursor move.
-model PresenceState {
-  id          String         @id @default(cuid())
-  workspaceId String
-  userId      String
-  status      PresenceStatus @default(OFFLINE)
-  lastSeenAt  DateTime       @default(now())
-  lastCursor  Json?
-  updatedAt   DateTime       @updatedAt
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([workspaceId, userId])
-  @@index([workspaceId, status])
-  @@index([userId])
 }
 
 // ─── Agent audit ─────────────────────────────────────────────────────────

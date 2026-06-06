@@ -170,7 +170,6 @@ function buildAuthOptions(): NextAuthOptions {
               },
             },
             conversations: { create: { title: "New conversation" } },
-            canvases: { create: { type: "NOTES", snapshot: { blocks: [] } } },
           },
           select: { id: true },
         });

@@ -33,13 +33,6 @@ export function findPrimaryConversation(workspaceId: string) {
   });
 }
 
-export function findPrimaryCanvas(workspaceId: string) {
-  return prisma.canvasDocument.findFirst({
-    where: { workspaceId },
-    orderBy: { updatedAt: "asc" },
-  });
-}
-
 export function renameWorkspace(workspaceId: string, name: string) {
   return prisma.workspace.update({
     where: { id: workspaceId },
@@ -70,7 +63,6 @@ export function createWorkspaceWithDefaults(input: {
         },
       },
       conversations: { create: { title: "New conversation" } },
-      canvases: { create: { type: "NOTES", snapshot: { blocks: [] } } },
     },
     include: memberInclude,
   });

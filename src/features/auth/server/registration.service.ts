@@ -7,7 +7,7 @@ import { seedDemoAgentAudit } from "@/features/agent-audit/server/seed.service";
 
 /**
  * Registers a new email+password user and provisions their personal
- * workspace + default conversation + canvas atomically. The OAuth path
+ * workspace + default conversation atomically. The OAuth path
  * provisions the workspace via the NextAuth `events.createUser` event;
  * credentials sign-ups bypass that hook (the PrismaAdapter only fires it
  * for adapter-created users), so we do it ourselves here.
@@ -51,7 +51,7 @@ export async function registerUser(input: RegisterInput) {
     ? `${firstName}'s workspace`
     : "Personal workspace";
 
-  // One transaction: User + Workspace + Membership + Conversation + Canvas.
+  // One transaction: User + Workspace + Membership + Conversation.
   // Mirrors the OAuth createUser event but inside an atomic boundary.
   const result = await prisma.$transaction(async (tx) => {
     const u = await tx.user.create({
@@ -73,7 +73,6 @@ export async function registerUser(input: RegisterInput) {
           },
         },
         conversations: { create: { title: "New conversation" } },
-        canvases: { create: { type: "NOTES", snapshot: { blocks: [] } } },
       },
       select: { id: true },
     });

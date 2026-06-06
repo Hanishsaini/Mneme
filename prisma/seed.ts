@@ -55,7 +55,6 @@ async function ensurePersonalWorkspace(
       ownerId: userId,
       members: { create: { userId, role: "OWNER", cursorColor } },
       conversations: { create: { title: "New conversation" } },
-      canvases: { create: { type: "NOTES", snapshot: { blocks: [] } } },
     },
     select: { id: true },
   });
@@ -89,7 +88,6 @@ async function ensureSharedWorkspace(
         ],
       },
       conversations: { create: { title: "Getting started" } },
-      canvases: { create: { type: "NOTES", snapshot: { blocks: [] } } },
     },
     select: { id: true },
   });

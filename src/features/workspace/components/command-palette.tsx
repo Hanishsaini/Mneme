@@ -4,14 +4,7 @@ import { useEffect } from "react";
 import { useTheme } from "next-themes";
 import { signOut } from "next-auth/react";
 import { toast } from "sonner";
-import {
-  Link2,
-  LogOut,
-  MessageSquare,
-  Moon,
-  StickyNote,
-  Sun,
-} from "lucide-react";
+import { Link2, LogOut, MessageSquare, Moon, Sun } from "lucide-react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -104,10 +97,6 @@ export function CommandPalette({
           <CommandItem onSelect={() => run(() => scrollToPanel("panel-chat"))}>
             <MessageSquare />
             Go to Conversation
-          </CommandItem>
-          <CommandItem onSelect={() => run(() => scrollToPanel("panel-notes"))}>
-            <StickyNote />
-            Go to Shared Notes
           </CommandItem>
           <CommandItem onSelect={() => run(focusComposer)}>
             <MessageSquare />

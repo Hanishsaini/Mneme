@@ -3,8 +3,6 @@ import { nanoid } from "nanoid";
 import type { MemberRole } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireMembership } from "@/lib/auth/authz";
-import { publishToWorkspace } from "@/lib/realtime/publish";
-import { toMemberDTO } from "@/lib/db/mappers";
 import { INVITE_TTL_MS } from "@/config/constants";
 import { addMember } from "./workspace.service";
 import {
@@ -102,16 +100,9 @@ export async function acceptInvite(
   // Two writes, sequential rather than transactional — the upsert in addMember
   // is the source of truth; if markInviteUsed fails the user is still in the
   // workspace and a retry just re-redirects via the "already_member" branch.
-  const member = await addMember(invite.workspaceId, userId);
+  await addMember(invite.workspaceId, userId);
   await markInviteUsed(invite.id, userId).catch((err) => {
     console.error("[invite] failed to mark invite used:", err);
-  });
-
-  // Realtime: tell anyone currently in the room that there's a new member.
-  // Their store appends to workspace.members so names/avatars resolve as soon
-  // as the new user's socket connects (which fires presence:update separately).
-  await publishToWorkspace(invite.workspaceId, "workspace:member:added", {
-    member: toMemberDTO(member),
   });
 
   return { kind: "joined", workspaceId: invite.workspaceId, workspaceName };

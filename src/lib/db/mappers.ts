@@ -1,5 +1,4 @@
 import type {
-  CanvasDocument,
   Conversation,
   MemoryItem,
   Message,
@@ -18,7 +17,6 @@ import type {
   AgentDecisionEventDTO,
   AgentRunDTO,
   ApiKeyDTO,
-  CanvasDocumentDTO,
   ConversationDTO,
   MemoryItemDTO,
   MessageDTO,
@@ -56,17 +54,6 @@ export function toConversationDTO(c: Conversation): ConversationDTO {
     title: c.title,
     summary: c.summary,
     createdAt: c.createdAt.toISOString(),
-  };
-}
-
-export function toCanvasDTO(d: CanvasDocument): CanvasDocumentDTO {
-  return {
-    id: d.id,
-    workspaceId: d.workspaceId,
-    type: d.type,
-    snapshot: (d.snapshot as Record<string, unknown>) ?? {},
-    version: d.version,
-    updatedAt: d.updatedAt.toISOString(),
   };
 }
 
