@@ -4,12 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  Check,
+  Brain,
   GitBranch,
   ListChecks,
   Lock,
-  ScrollText,
-  Shield,
   ShieldCheck,
 } from "lucide-react";
 import { Badge, CodeBlock } from "@/components/design";
@@ -95,19 +93,18 @@ function Hero() {
           className="type-micro"
           style={{ color: "var(--accent-amber)", letterSpacing: "0.12em" }}
         >
-          Agent audit infrastructure
+          Behavioral memory for AI agents
         </p>
 
         <h1 className="mx-auto mt-5 max-w-3xl text-[clamp(40px,7vw,64px)] font-semibold leading-[1.05] tracking-[-0.03em] text-ink">
-          Prove what your{" "}
-          <span style={{ color: "var(--accent-amber)" }}>agents</span> decided.
+          Your agents forget.{" "}
+          <span style={{ color: "var(--accent-amber)" }}>Mneme remembers.</span>
         </h1>
 
         <p className="mx-auto mt-6 max-w-2xl text-[17px] leading-relaxed text-ink-secondary">
-          When a regulator asks why your AI made a call, logs aren&apos;t
-          enough. Mneme captures every agent decision, flags every
-          contradiction, and exports a tamper-evident trail — hashed, chained,
-          and ready for audit.
+          Log every decision, catch contradictions before they cause damage,
+          enforce policies in real time, and export a tamper-evident proof
+          trail — in one SDK call.
         </p>
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -116,7 +113,7 @@ function Hero() {
             className="inline-flex h-11 items-center justify-center rounded-field px-5 text-[15px] font-medium shadow-elev2 transition-all hover:opacity-90 hover:shadow-elev3"
             style={{ backgroundColor: "var(--accent-amber)", color: "var(--bg-base)" }}
           >
-            Start auditing free
+            Start free
           </Link>
           <Link
             href="#integrate"
@@ -126,38 +123,17 @@ function Hero() {
           </Link>
         </div>
 
-        {/* Capability trust line — honest, capability-based, no fake metrics. */}
-        <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-          {[
-            "SHA-256 chained",
-            "Real-time policy checks",
-            "One-click audit export",
-          ].map((t) => (
-            <span
-              key={t}
-              className="inline-flex items-center gap-1.5 type-small text-ink-secondary"
-            >
-              <Check className="h-3.5 w-3.5" style={{ color: "var(--accent-amber)" }} />
-              {t}
-            </span>
-          ))}
-        </div>
+        {/* Framework trust line — lead with developer compatibility, not
+            regulation. Compliance is the proof, not the pitch. */}
+        <p className="mt-7 type-small text-ink-secondary">
+          Works with LangChain · CrewAI · AutoGen · LlamaIndex · any agent
+          framework
+        </p>
       </div>
 
       {/* Center-stage demo. */}
       <div className="mx-auto max-w-2xl px-6 pb-24">
         <DemoPanel />
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-2 type-small text-ink-tertiary">
-          <span>Drops into</span>
-          {["LangChain", "CrewAI", "AutoGen", "LlamaIndex"].map((f) => (
-            <span
-              key={f}
-              className="rounded-pill border border-hairline-subtle px-2.5 py-0.5 text-ink-secondary"
-            >
-              {f}
-            </span>
-          ))}
-        </div>
       </div>
     </section>
   );
@@ -352,26 +328,26 @@ function DemoCard({
 function Primitives() {
   const items = [
     {
-      icon: ScrollText,
-      heading: "Decision Log",
-      body: "Every agent action captured. Tool calls, context used, outputs — all hashed and chained for tamper-evidence.",
+      icon: Brain,
+      heading: "Memory that compounds",
+      body: "Every decision your agent makes is logged, embedded, and connected to what came before. Your agent builds on what it learned — not what it can fit in a context window.",
     },
     {
       icon: GitBranch,
-      heading: "Supersession Detection",
-      body: "When an agent contradicts a past decision, Mneme flags it instantly. The amber callout shows exactly what changed and why.",
+      heading: "Consistency enforcement",
+      body: "When your agent contradicts a past decision, Mneme catches it in real time. The amber callout shows exactly what changed, why it matters, and what the original decision was.",
     },
     {
-      icon: Shield,
-      heading: "Policy Rules Engine",
-      body: "Define rules in plain English. Mneme checks every decision in real time and catches violations before they become incidents.",
+      icon: ShieldCheck,
+      heading: "Proof when it counts",
+      body: "Policy violations flagged before they ship. A tamper-evident audit trail for every action. One-click export for any regulator, auditor, or board that asks why.",
     },
   ];
   return (
     <section className="border-t border-hairline-subtle">
       <div className="mx-auto max-w-6xl px-6 py-24">
         <Reveal>
-          <p className="type-micro text-ink-tertiary">How it works</p>
+          <p className="type-micro text-ink-tertiary">What you get</p>
         </Reveal>
         <div className="mt-10 grid gap-12 md:grid-cols-3">
           {items.map((item, i) => {
@@ -531,7 +507,7 @@ function FooterCta() {
           <h2 className="text-[clamp(28px,5vw,40px)] font-semibold leading-tight tracking-[-0.02em] text-ink">
             Your agents are already making decisions.
             <br />
-            Are you watching?
+            Make them remember.
           </h2>
           <div className="mt-8 flex justify-center">
             <Link
@@ -539,7 +515,7 @@ function FooterCta() {
               className="inline-flex h-11 items-center justify-center gap-1.5 rounded-field px-6 text-[15px] font-medium shadow-elev2 transition-all hover:opacity-90 hover:shadow-elev3"
               style={{ backgroundColor: "var(--accent-amber)", color: "var(--bg-base)" }}
             >
-              Start auditing free
+              Start free
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>

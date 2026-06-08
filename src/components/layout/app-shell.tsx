@@ -6,7 +6,9 @@ import {
   BrainCircuit,
   ChevronsUpDown,
   LayoutGrid,
+  ListChecks,
   Menu,
+  MessageSquare,
   Settings as SettingsIcon,
   Shield,
   X,
@@ -25,7 +27,12 @@ import { cn, initials } from "@/lib/utils";
  * ground. Dev-tools calm — one accent, lots of breathing room.
  */
 
-export type NavKey = "dashboard" | "audit" | "memory" | "settings";
+export type NavKey =
+  | "overview"
+  | "decisions"
+  | "memory"
+  | "policies"
+  | "settings";
 
 interface NavItem {
   key: NavKey;
@@ -34,10 +41,16 @@ interface NavItem {
   href: (workspaceId: string) => string;
 }
 
+// One nav for the whole product. Overview is the workspace landing;
+// Decisions is the agent audit surface (the 5-tab shell); Memory is the
+// unified decision + conversation timeline; Policies is promoted from a
+// tab to a first-class destination. Chat is a secondary surface, linked
+// from the footer rather than the primary nav.
 const NAV: NavItem[] = [
-  { key: "dashboard", label: "Dashboard", icon: LayoutGrid, href: () => "/dashboard" },
-  { key: "audit", label: "Agent Audit", icon: Shield, href: (w) => `/w/${w}/audit` },
-  { key: "memory", label: "Memory", icon: BrainCircuit, href: (w) => `/w/${w}` },
+  { key: "overview", label: "Overview", icon: LayoutGrid, href: (w) => `/w/${w}` },
+  { key: "decisions", label: "Decisions", icon: Shield, href: (w) => `/w/${w}/audit` },
+  { key: "memory", label: "Memory", icon: BrainCircuit, href: (w) => `/w/${w}/memory` },
+  { key: "policies", label: "Policies", icon: ListChecks, href: (w) => `/w/${w}/policies` },
   { key: "settings", label: "Settings", icon: SettingsIcon, href: (w) => `/w/${w}/settings` },
 ];
 
@@ -121,8 +134,16 @@ export function AppShell({
         })}
       </nav>
 
-      {/* Footer: user + shortcut hint */}
+      {/* Footer: chat shortcut + user + shortcut hint */}
       <div className="mt-3 space-y-2 border-t border-hairline-subtle px-3 py-3">
+        <Link
+          href={`/w/${workspaceId}/chat`}
+          onClick={() => setMobileOpen(false)}
+          className="flex items-center gap-2.5 rounded-field px-2.5 py-2 text-[14px] text-ink-secondary transition-colors hover:bg-surface-elevated hover:text-ink"
+        >
+          <MessageSquare className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+          Chat
+        </Link>
         <div className="flex items-center gap-2 px-1">
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-subtle">
             <span className="type-micro text-ink-secondary">

@@ -65,7 +65,7 @@ export function MemoryAskView({
 
   function openSource(source: MemoryAskSourceDTO) {
     onClose();
-    router.push(`/w/${workspaceId}?thread=${source.conversationId}`);
+    router.push(`/w/${workspaceId}/chat?thread=${source.conversationId}`);
     router.refresh();
   }
 

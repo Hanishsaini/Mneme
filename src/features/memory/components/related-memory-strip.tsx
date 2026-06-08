@@ -55,7 +55,7 @@ export function RelatedMemoryStrip({
 
   function jumpTo(hit: RelatedMemoryHitDTO) {
     if (!workspace) return;
-    router.push(`/w/${workspace.id}?thread=${hit.conversationId}`);
+    router.push(`/w/${workspace.id}/chat?thread=${hit.conversationId}`);
     router.refresh();
   }
 

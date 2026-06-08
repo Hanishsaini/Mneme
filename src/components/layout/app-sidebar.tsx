@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ArrowLeft,
   BrainCircuit,
   MessageSquarePlus,
   Search,
@@ -75,7 +77,7 @@ export function AppSidebar({
         createdAt: new Date().toISOString(),
       });
       onClose();
-      router.push(`/w/${workspace.id}?thread=${conversation.id}`);
+      router.push(`/w/${workspace.id}/chat?thread=${conversation.id}`);
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not create");
@@ -117,7 +119,7 @@ export function AppSidebar({
       return;
     }
     onClose();
-    router.push(`/w/${workspace.id}?thread=${id}`);
+    router.push(`/w/${workspace.id}/chat?thread=${id}`);
     router.refresh();
   }
 
@@ -125,8 +127,13 @@ export function AppSidebar({
 
   const body = (
     <div className="flex h-full flex-col">
-      {/* Brand + workspace */}
-      <div className="flex shrink-0 items-center gap-2.5 border-b px-3 py-3">
+      {/* Brand + workspace — links back to the workspace Overview so chat
+          stays connected to the unified shell rather than a dead end. */}
+      <Link
+        href={workspace ? `/w/${workspace.id}` : "/dashboard"}
+        onClick={onClose}
+        className="group flex shrink-0 items-center gap-2.5 border-b px-3 py-3 transition-colors hover:bg-secondary/40"
+      >
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20">
           <BrainCircuit className="h-4 w-4" />
         </div>
@@ -136,7 +143,11 @@ export function AppSidebar({
             {workspace?.name ?? "Workspace"}
           </p>
         </div>
-      </div>
+        <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+          <ArrowLeft className="h-3 w-3" />
+          Overview
+        </span>
+      </Link>
 
       {/* New chat CTA */}
       <div className="shrink-0 p-2">

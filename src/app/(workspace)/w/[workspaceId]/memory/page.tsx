@@ -3,16 +3,15 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { requireMembership } from "@/lib/auth/authz";
 import { prisma } from "@/lib/db/prisma";
 import { AppShell } from "@/components/layout/app-shell";
-import { WorkspaceOverview } from "@/features/workspace/components/workspace-overview";
+import { UnifiedMemory } from "@/features/memory/components/unified-memory";
 import { ApiError } from "@/lib/api/errors";
 
 /**
- * Workspace Overview (RSC) — the workspace landing and the first thing a
- * logged-in member sees. Auth + membership gate, then hand off to the
- * client overview, which stitches the agent-decision and team-memory worlds
- * into one at-a-glance view. Chat moved to /w/[id]/chat.
+ * Agent Memory (RSC) — the unified timeline of agent decisions and the
+ * conversation memory captured from chat, in one chronological feed. Auth +
+ * membership gate, then hand off to the client timeline.
  */
-export default async function WorkspacePage({
+export default async function MemoryPage({
   params,
 }: {
   params: Promise<{ workspaceId: string }>;
@@ -33,14 +32,11 @@ export default async function WorkspacePage({
       <AppShell
         workspaceId={workspace.id}
         workspaceName={workspace.name}
-        active="overview"
+        active="memory"
         userName={user.name}
         userEmail={user.email}
       >
-        <WorkspaceOverview
-          workspaceId={workspace.id}
-          workspaceName={workspace.name}
-        />
+        <UnifiedMemory workspaceId={workspace.id} />
       </AppShell>
     );
   } catch (err) {

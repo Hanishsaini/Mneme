@@ -3,16 +3,15 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { requireMembership } from "@/lib/auth/authz";
 import { prisma } from "@/lib/db/prisma";
 import { AppShell } from "@/components/layout/app-shell";
-import { WorkspaceOverview } from "@/features/workspace/components/workspace-overview";
+import { PoliciesPanel } from "@/features/agent-audit/components/policies-panel";
 import { ApiError } from "@/lib/api/errors";
 
 /**
- * Workspace Overview (RSC) — the workspace landing and the first thing a
- * logged-in member sees. Auth + membership gate, then hand off to the
- * client overview, which stitches the agent-decision and team-memory worlds
- * into one at-a-glance view. Chat moved to /w/[id]/chat.
+ * Policies (RSC) — promoted from an audit tab to a first-class destination.
+ * Same panel the audit shell's Policies tab renders, now reachable directly
+ * from the unified nav. Auth + membership gate, then hand off.
  */
-export default async function WorkspacePage({
+export default async function PoliciesPage({
   params,
 }: {
   params: Promise<{ workspaceId: string }>;
@@ -33,14 +32,13 @@ export default async function WorkspacePage({
       <AppShell
         workspaceId={workspace.id}
         workspaceName={workspace.name}
-        active="overview"
+        active="policies"
         userName={user.name}
         userEmail={user.email}
       >
-        <WorkspaceOverview
-          workspaceId={workspace.id}
-          workspaceName={workspace.name}
-        />
+        <div className="px-8 py-7">
+          <PoliciesPanel workspaceId={workspace.id} />
+        </div>
       </AppShell>
     );
   } catch (err) {

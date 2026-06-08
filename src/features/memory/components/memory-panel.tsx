@@ -245,7 +245,7 @@ export function MemoryPanel({
       return;
     }
     onOpenChange(false);
-    router.push(`/w/${workspace.id}?thread=${item.conversationId}`);
+    router.push(`/w/${workspace.id}/chat?thread=${item.conversationId}`);
     router.refresh();
   }
 

@@ -32,7 +32,7 @@ export default async function AuditPage({
       <AppShell
         workspaceId={workspace.id}
         workspaceName={workspace.name}
-        active="audit"
+        active="decisions"
         userName={user.name}
         userEmail={user.email}
       >

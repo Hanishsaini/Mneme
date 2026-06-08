@@ -2,9 +2,11 @@
 
 # Mneme
 
-**The decision audit trail for autonomous AI agents.**
+**The behavioral memory layer for AI agents.**
 
-Every agent decision logged. Every contradiction flagged. Every policy violation caught — synchronously, at decision time, with a tamper-evident export ready for your regulator.
+Langfuse tells you what your agent did. Mneme remembers what your agent learned, catches when it contradicts itself, and enforces the rules you set — with a tamper-evident proof trail for when anyone asks why.
+
+One SDK call. Three things: memory, consistency, compliance.
 
 [Open a workspace →](https://github.com/Hanishsaini/Mneme) · [SDK quickstart →](#sdk-quickstart)
 
@@ -37,8 +39,8 @@ The Colorado AI Act takes effect **June 2026**. HIPAA, FINRA, SOC2 already requi
 Drop the SDK into any LangChain, CrewAI, AutoGen, or hand-rolled agent. Three calls.
 
 Authentication is a workspace API key, passed as `apiKey`. Generate one in
-the workspace's **API Keys** tab (`/w/<workspaceId>` → API Keys → *Generate
-key*) — the secret is shown once, so copy it into your agent's environment as
+the workspace's **API Keys** tab (`/w/<workspaceId>` → Decisions → API Keys →
+*Generate key*) — the secret is shown once, so copy it into your agent's environment as
 `MNEME_API_KEY`. The key is scoped to that one workspace and can be revoked at
 any time.
 
